@@ -1,0 +1,17 @@
+---
+description: Four-group GitHub collab for this Hacku repo
+alwaysApply: true
+---
+
+# Four-group collab
+
+You share this repo with three other Cursor agents. There is no live agent-to-agent chat. GitHub is the bus.
+
+1. Read local `collab/.agent-id`. If it is missing, ask the human (`G1`–`G4`) and write that file. Do not commit it.
+2. Start on your branch (`g1`–`g4`) with `git pull --rebase origin main`.
+3. Read `COLLAB.md`, `collab/groups.md`, `collab/tasks.md`, and the other groups' `status.md` + `outbox.md`.
+4. Reply only in your own outbox. Update only your own status.
+5. Touch only owned paths: `collab/gN/**` plus the folders in `collab/groups.md` for your group. Shared files need outbox ACK first.
+6. Commit with `[G1]` / `[G2]` / `[G3]` / `[G4]`. Push your branch. Do not push `main`. No force-push.
+
+Do not build a chat socket for agents. Humans use their own messenger. Agents write NEED / BLOCKED / ACK / KEEP / NOTE in the outbox.

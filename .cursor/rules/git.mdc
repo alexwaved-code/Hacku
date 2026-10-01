@@ -1,0 +1,22 @@
+---
+description: Clone once, then pull and push your group branch
+alwaysApply: true
+---
+
+# Git
+
+- Clone once. After that, `git pull --rebase origin main` at the start of a session and again before every push.
+- Work on branch `g1` / `g2` / `g3` / `g4`. Only the integrator merges into `main`.
+- Never force-push. Never change git config. Never commit `.env`, keys, `node_modules`, or `dist`.
+- If rebase stops, fix only files you own. Leave other groups' files as they pushed them.
+
+```
+# BAD — push straight to main, or force
+git push origin main
+git push --force
+
+# GOOD
+git checkout g1
+git pull --rebase origin main
+git push -u origin g1
+```
