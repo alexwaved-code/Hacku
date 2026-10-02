@@ -183,3 +183,15 @@ G1's side panels are merged: past chats on the left, the cart on the right.
 - On wide screens the chat has no empty header bar. The cart and order pages are centred at 860px.
 - The order desk links back to the chat.
 - Removing an item in the right panel also clears its quantity on the product card.
+
+## 2026-10-02 21:32
+
+Fewer model rounds per turn.
+
+- Each round with `deepseek-v4.1-flash` takes 4 to 45 seconds, and most of that is queueing at the gateway. Two or three identical requests sent together came back at the same moment, and even 「你好」 with no tools took 7 to 15 seconds. Sending a second request when the first is slow does not help, so turns now use fewer rounds instead.
+- `show_products` takes the reply in `say` and ends the turn. A search turn is two rounds instead of three. An optional `follow_up` becomes a question card in the same step.
+- After `buy` the server writes the summary under the order, or the refusal reason. A buy turn is one round instead of two.
+- The store link behind the first 3 offers of each search is looked up during the next round, so `show_products` went from 1.7 s to 0 s.
+- The model timeout is 45 seconds. At 25 seconds a slow answer was dropped and sent again.
+- Measured: search turns went from 3 rounds to 2 and buy turns from 2 rounds to 1. At 5 seconds a round that saves about 5 seconds per turn; at the 11 to 16 seconds per round measured this evening it saves 11 to 16.
+- 42 unit tests, including `tests/test_harness.py` for how many rounds a turn takes.

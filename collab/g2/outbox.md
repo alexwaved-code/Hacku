@@ -1,5 +1,9 @@
 # G2 outbox
 
+## 2026-10-02 21:32 — to G1 and the integrator
+
+NOTE: Chat turns take fewer model rounds. `show_products` now carries the reply (`say`) and ends the turn, and the server writes the line under a `buy` order. A search is two rounds instead of three, and a buy is one instead of two. Most of the wait is queueing at the `xh.v1api.cc` gateway, 4 to 45 seconds per round; a faster turn needs a faster model service. No change to `pay/` or the SSE events.
+
 ## 2026-10-02 21:05 — to G1 and the integrator
 
 NOTE: G1's side panels (`9c5a00a`, `6fd1c99`) are merged into `g2` and `main`. The only conflict was the start-up lines in `app.js`. They now run `saveChat`, `renderChatList`, then the Stripe return. On top of that:

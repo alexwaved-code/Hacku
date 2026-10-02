@@ -12,6 +12,8 @@ import money
 from . import web
 
 MAX_CARDS = 3
+EARLY_LINKS = 3
+LINK_WAIT = 12
 CARD_TOOL = "show_products"
 ASK_TOOL = "ask_user"
 BUY_TOOL = "buy"
@@ -131,8 +133,9 @@ TOOL_SCHEMAS = [
         "function": {
             "name": "show_products",
             "description": (
-                "Show the user up to 3 products as cards with picture, price, store, and link. "
-                "Pass refs from shop_search or open_page. Call this once, with your final picks, before you answer."
+                "Show the user up to 3 products as cards with picture, price, store, and link, plus your answer. "
+                "Pass refs from shop_search or open_page. Call this once, with your final picks. "
+                "The turn ends after it, so put your whole reply in say."
             ),
             "parameters": {
                 "type": "object",
@@ -143,9 +146,25 @@ TOOL_SCHEMAS = [
                         "minItems": 1,
                         "maxItems": MAX_CARDS,
                         "description": "Best pick first.",
-                    }
+                    },
+                    "say": {
+                        "type": "string",
+                        "description": (
+                            "Your reply under the cards, at most 2 short sentences in the user's language: "
+                            "why the first card is the pick and the main trade-off. Do not repeat the prices."
+                        ),
+                    },
+                    "follow_up": {
+                        "type": "object",
+                        "description": "Optional. One choice question when the picks differ on a trade-off, e.g. 更重視音質還是續航？",
+                        "properties": {
+                            "prompt": {"type": "string"},
+                            "options": {"type": "array", "items": {"type": "string"}, "minItems": 2, "maxItems": MAX_OPTIONS},
+                        },
+                        "required": ["prompt", "options"],
+                    },
                 },
-                "required": ["refs"],
+                "required": ["refs", "say"],
             },
         },
     },
@@ -220,6 +239,7 @@ _cache = OrderedDict()
 _lock = threading.Lock()
 _counter = count(1)
 _quoter = None
+_links = ThreadPoolExecutor(max_workers=6, thread_name_prefix="links")
 
 
 def set_quoter(quote):
@@ -310,6 +330,8 @@ def shop_search(query, max_price=None, region=None, store=""):
     if limit:
         offers = [o for o in offers if o["price"] is None or o["currency"] != currency or o["price"] <= limit]
     rows = []
+    for offer in offers[:EARLY_LINKS]:
+        _link_future(offer)
     for offer in offers[:10]:
         ref = _remember(offer)
         rows.append(
@@ -359,8 +381,7 @@ def show_products(refs):
                 items.append(item)
     if not items:
         return _fail("Those refs are unknown or expired. Run shop_search again.", "找不到商品")
-    with ThreadPoolExecutor(max_workers=MAX_CARDS) as pool:
-        list(pool.map(_resolve_link, items))
+    wait([_link_future(item) for item in items], timeout=LINK_WAIT)
     model = {"shown": [{"ref": _ref_of(i), "name": i["name"], "store": i["store"], "price": i["price"], "currency": i.get("currency")} for i in items]}
     if missing:
         model["missing"] = missing
@@ -430,16 +451,21 @@ def buy(entries):
         payload.append({**{field: card[field] for field in cards.FIELDS}, "id": card["url"] or card["name"], "qty": qty, "sig": card["sig"]})
     result = _quoter(payload)
     if not result.get("ok"):
+        reason = str(result.get("reason") or "這筆訂單不能建立。")
         return {
             "ok": True,
             "summary": "不能下單",
-            "model": {"paid": False, "reason": result.get("reason")},
-            "ui": {"kind": "receipt", "paid": False, "reason": result.get("reason")},
+            "reply": f"沒有建立訂單。{reason}" + (" 可以到購物車頁面修改付款授權。" if "授權" in reason else ""),
+            "model": {"paid": False, "reason": reason},
+            "ui": {"kind": "receipt", "paid": False, "reason": reason},
         }
     order = {key: result.get(key) for key in ("total", "currency", "cap", "live")}
+    total = money.text(result["total"], result["currency"])
+    lines = "、".join(f"{line['name']} × {line['qty']}" for line in result["items"])
     return {
         "ok": True,
-        "summary": f"待確認 {money.text(result['total'], result['currency'])}",
+        "summary": f"待確認 {total}",
+        "reply": f"訂單已準備好：{lines}，共 {total}。請核對後按「確認付款」，在 Stripe 頁面一起填卡和香港送貨地址。",
         "model": {
             "paid": False,
             "awaiting_shopper": True,
@@ -458,6 +484,15 @@ def buy(entries):
 
 def has_refs(model):
     return bool(model.get("ref") or any(row.get("ref") for row in model.get("offers") or []))
+
+
+def _link_future(item):
+    """Starts finding the store page behind a Google link once per item, so cards rarely wait for it."""
+    with _lock:
+        future = item.get("_link")
+        if future is None:
+            future = item["_link"] = _links.submit(_resolve_link, item)
+    return future
 
 
 def _resolve_link(item):

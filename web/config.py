@@ -34,7 +34,7 @@ CHAT = {
     "base_url": _base_url(os.environ.get("OPENAI_BASE_URL") or "https://xh.v1api.cc/v1"),
     "api_key": os.environ.get("OPENAI_API_KEY", ""),
     "model": os.environ.get("OPENAI_MODEL") or "deepseek-v4.1-flash",
-    "timeout": 25,
+    "timeout": 45,
 }
 
 VERIFY_SEPARATE = all(os.environ.get(name) for name in ("VERIFY_BASE_URL", "VERIFY_API_KEY", "VERIFY_MODEL"))
