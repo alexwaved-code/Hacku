@@ -42,6 +42,25 @@ def offer():
     }
 
 
+def fake_tools(name, args):
+    if name != "shop_search":
+        return tools.run_tool(name, args)
+    letter = args["query"]
+    rows = []
+    for number in (1, 2, 3):
+        ref = tools._remember({**offer(), "name": f"{letter}{number}", "url": f"https://www.hktvmall.com/p/{letter}{number}"})
+        rows.append({"ref": ref, "name": f"{letter}{number}", "price": 69})
+    return {"ok": True, "summary": "3 個報價", "model": {"offers": rows}, "ui": None}
+
+
+def two_searches():
+    parts = [
+        {"index": index, "id": f"s{index}", "function": {"name": "shop_search", "arguments": json.dumps({"query": letter})}}
+        for index, letter in enumerate("AB")
+    ]
+    return {"choices": [{"delta": {"tool_calls": parts}}]}
+
+
 class HarnessTest(TempData):
     def run_turn(self, *streams):
         script = list(streams)
@@ -49,11 +68,12 @@ class HarnessTest(TempData):
 
         def open_stream(config, body):
             stream = script.pop(0)
+            stream.body = body
             opened.append(stream)
             return stream
 
         events = []
-        with mock.patch.object(harness.llm, "open_stream", side_effect=open_stream):
+        with mock.patch.object(harness.llm, "open_stream", side_effect=open_stream), mock.patch.object(harness, "run_tool", fake_tools):
             harness.run(CONFIG, [{"role": "user", "content": "買充電線"}], events.append)
         return events, opened
 
@@ -61,35 +81,51 @@ class HarnessTest(TempData):
         tools.set_quoter(None)
         super().tearDown()
 
-    def test_cards_and_say_end_the_turn_in_one_round(self):
-        ref = tools._remember(offer())
-        events, opened = self.run_turn(FakeStream([call("show_products", {"refs": [ref], "say": "這條最划算。"})]))
-        self.assertEqual(len(opened), 1)
-        self.assertEqual([e["text"] for e in events if e["type"] == "delta"], ["這條最划算。"])
-        done = events[-1]
-        self.assertEqual(done["type"], "done")
-        self.assertEqual(done["messages"][-1], {"role": "assistant", "content": "這條最划算。"})
-
-    def test_follow_up_becomes_a_question_card(self):
-        ref = tools._remember(offer())
-        follow = {"prompt": "更重視價錢還是耐用？", "options": ["價錢", "耐用"]}
-        events, opened = self.run_turn(FakeStream([call("show_products", {"refs": [ref], "say": "兩條都可以。", "follow_up": follow})]))
-        self.assertEqual(len(opened), 1)
-        ask = next(e for e in events if e["type"] == "ask")
-        self.assertEqual(ask["id"], "c1_ask")
-        self.assertEqual(ask["questions"][0]["options"], ["價錢", "耐用"])
-        last = events[-1]["messages"][-1]
-        self.assertEqual(last["content"], "兩條都可以。")
-        self.assertEqual(last["tool_calls"][0]["id"], "c1_ask")
-
-    def test_cards_without_say_get_one_more_round(self):
-        ref = tools._remember(offer())
+    def test_search_shows_five_cards_before_the_model_answers(self):
         events, opened = self.run_turn(
-            FakeStream([call("show_products", {"refs": [ref]})]),
-            FakeStream([say("就買這條。")]),
+            FakeStream([two_searches()]),
+            FakeStream([say("首選 A1。")]),
         )
         self.assertEqual(len(opened), 2)
-        self.assertEqual(events[-1]["messages"][-1]["content"], "就買這條。")
+        cards = next(e for e in events if e["type"] == "tool_result" and e["name"] == "show_products")
+        self.assertEqual([item["name"] for item in cards["ui"]["items"]], ["A1", "B1", "A2", "B2", "A3"])
+        kinds = [e["type"] for e in events]
+        self.assertLess(kinds.index("tool_result"), kinds.index("delta"))
+        self.assertEqual([t["function"]["name"] for t in opened[1].body["tools"]], ["ask_user"])
+        seen = [json.loads(m["content"]) for m in opened[1].body["messages"] if m.get("tool_call_id") == "s1"]
+        self.assertEqual([row["name"] for row in seen[0]["offers"]], ["B1", "B2"])
+        self.assertEqual(events[-1]["messages"][-1], {"role": "assistant", "content": "首選 A1。"})
+
+    def test_answer_may_end_with_a_trade_off_question(self):
+        question = {"questions": [{"prompt": "更重視價錢還是耐用？", "options": ["價錢", "耐用"]}]}
+        events, opened = self.run_turn(
+            FakeStream([two_searches()]),
+            FakeStream([say("A1 最耐用。"), call("ask_user", question, "q1")]),
+        )
+        ask = next(e for e in events if e["type"] == "ask")
+        self.assertEqual(ask["id"], "q1")
+        self.assertNotIn("retract", [e["type"] for e in events])
+        self.assertEqual(events[-1]["messages"][-1]["content"], "A1 最耐用。")
+
+    def test_found_store_links_update_the_cards_before_done(self):
+        with mock.patch.object(harness, "refresh_cards", return_value=[{"name": "A1 updated"}]) as refresh:
+            events, opened = self.run_turn(FakeStream([two_searches()]), FakeStream([say("首選 A1。")]))
+        refs, shown = refresh.call_args.args
+        self.assertEqual(len(refs), 5)
+        self.assertEqual(len(shown), 5)
+        self.assertEqual([e["type"] for e in events][-2:], ["cards", "done"])
+        self.assertEqual(events[-2]["items"], [{"name": "A1 updated"}])
+
+    def test_empty_answer_after_cards_still_says_something(self):
+        events, opened = self.run_turn(FakeStream([two_searches()]), FakeStream([]))
+        self.assertEqual(events[-1]["messages"][-1]["content"], harness.CARDS_TEXT)
+
+    def test_pick_cards_skips_repeats_and_puts_priced_offers_first(self):
+        models = [
+            {"offers": [{"ref": "a", "name": "Same", "price": 1}, {"ref": "b", "name": "NoPrice", "price": None}]},
+            {"offers": [{"ref": "c", "name": "same", "price": 2}, {"ref": "d", "name": "Other", "price": 3}]},
+        ]
+        self.assertEqual(tools.pick_cards(models), ["a", "d", "b"])
 
     def test_buy_ends_the_turn_with_the_order_summary(self):
         tools.set_quoter(

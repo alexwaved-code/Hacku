@@ -195,3 +195,15 @@ Fewer model rounds per turn.
 - The model timeout is 45 seconds. At 25 seconds a slow answer was dropped and sent again.
 - Measured: search turns went from 3 rounds to 2 and buy turns from 2 rounds to 1. At 5 seconds a round that saves about 5 seconds per turn; at the 11 to 16 seconds per round measured this evening it saves 11 to 16.
 - 42 unit tests, including `tests/test_harness.py` for how many rounds a turn takes.
+
+## 2026-10-03 00:33
+
+Cards show right after the search, five at a time, and the chat model is `kimi-k2.6`.
+
+- The server picks up to 5 cards from the search results itself (searches take turns, repeated names skipped, priced offers first) and shows them at once. The model writes its two sentences after the cards are on screen. `show_products` is no longer a model tool.
+- Offers that were not shown are removed from the model's context, so the answer and later 「幫我買」 can only point at cards the user can see.
+- The first-card 「首選」 badge is gone; the answer says which card fits best.
+- A Google Shopping search keeps up to 40 offers before the budget filter, then 10. Before, it cut to 10 first and a HK$300 budget often left 3.
+- Cards wait at most 0.5 s for store links. The links keep resolving in the background, and a new `cards` event sends the cards again with them before `done`.
+- Model race on the same gateway, full prompt and tools, the same shopping question: `kimi-k2.6` showed cards at 5 to 9 s and finished at 13 to 17 s in four runs. `deepseek-v4.1-flash` ranged from 13 s to a 63 s timeout; `deepseek-v4-flash-none` answered in Cantonese; `gpt-4o-mini` ignored the length rule; `glm-5.3-flash` misquoted a price; `claude-haiku-4-5` did not connect.
+- 44 unit tests.

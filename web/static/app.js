@@ -163,6 +163,7 @@ async function streamChat(controller, turn) {
         else if (event.type === "retract") turn.retract();
         else if (event.type === "tool_start") turn.stepStart(event);
         else if (event.type === "tool_result") turn.stepDone(event);
+        else if (event.type === "cards") turn.showCards(event.items);
         else if (event.type === "ask") turn.ask(event);
         else if (event.type === "error") throw new Error(event.message || "助理發生錯誤。");
         else if (event.type === "done") added = Array.isArray(event.messages) ? event.messages : [];
@@ -507,7 +508,7 @@ function appendSavedAgent(entry) {
   if (entry.text) text.innerHTML = renderMarkdown(entry.text);
   const cards = h("div", { class: "cards" });
   const products = Array.isArray(entry.products) ? entry.products : [];
-  if (products.length) cards.append(...products.map((product, index) => productCard(product, index === 0)));
+  if (products.length) cards.append(...products.map(productCard));
   const receipts = Array.isArray(entry.receipts) ? entry.receipts : [];
   const item = h("li", { class: "message agent turn" }, cards, ...receipts.map(paymentCard), text);
   item._markdown = entry.text || "";
@@ -559,12 +560,16 @@ function createTurn() {
       running.set(event.id, event.label || event.name);
       showStatus();
     },
+    showCards(items) {
+      if (!Array.isArray(items)) return;
+      item._products = items;
+      cards.replaceChildren(...items.map(productCard));
+    },
     stepDone(event) {
       running.delete(event.id);
       showStatus();
       if (event.ui?.kind === "products") {
-        item._products = event.ui.items;
-        cards.replaceChildren(...event.ui.items.map((product, index) => productCard(product, index === 0)));
+        this.showCards(event.ui.items);
         scrollToEnd();
       }
       if (event.ui?.kind === "receipt" || event.ui?.kind === "order") {
@@ -610,7 +615,7 @@ function createTurn() {
   };
 }
 
-function productCard(product, best) {
+function productCard(product) {
   const picture = product.image
     ? h("img", { src: product.image, alt: "", loading: "lazy", referrerpolicy: "no-referrer", onerror: hideBrokenImage })
     : null;
@@ -619,7 +624,7 @@ function productCard(product, best) {
       ? h("span", { class: "rating" }, `★ ${Number(product.rating).toFixed(1)}`, product.reviews ? `（${compact(product.reviews)}）` : "")
       : null;
   const content = [
-    h("div", { class: "pic" }, picture, best ? h("span", { class: "badge" }, "首選") : null),
+    h("div", { class: "pic" }, picture),
     h(
       "div",
       { class: "info" },

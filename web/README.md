@@ -52,7 +52,7 @@ python3 web/server.py
 |---|---|
 | `OPENAI_BASE_URL` | `https://xh.v1api.cc/v1` |
 | `OPENAI_API_KEY` | model key from https://xh.v1api.cc |
-| `OPENAI_MODEL` | `deepseek-v4.1-flash` |
+| `OPENAI_MODEL` | `kimi-k2.6`. The fastest steady model measured on this gateway for the shopping turn; the token must allow it. Without the variable it is `deepseek-v4.1-flash`. |
 | `SERPER_API_KEY` | search key from https://serper.dev |
 | `STRIPE_SECRET_KEY` | Stripe key. `sk_test_...` for test mode (https://dashboard.stripe.com/test/apikeys). A live key (`sk_live_...` or `rk_live_...`) is refused unless `HACKU_LIVE=1`. |
 | `HACKU_LIVE` | `1` to take real payments with a live key. Live orders must be HKD and at most HK$100 each (`LIVE_CAPS` in `pay/checkout.py`), on top of the mandate. |
@@ -70,7 +70,7 @@ Filling a store's cart needs Google Chrome in `/Applications` and the Python pac
 |---|---|
 | `ask_user` | 1 to 3 multiple-choice questions (budget, use, one key preference, or a trade-off between the shown picks). The turn pauses. The answer comes back as this tool's result: `{"answers": [...], "note": "…"}`, `{"skipped": true}`, or `{"user_reply": "…"}`. |
 | `shop_search` | Google Shopping in `region` (default `hk`; also `tw`, `cn`, `jp`, `kr`, `sg`, `us`, `uk`, `au`). With `store` (for example `taobao`, `amazon.co.jp`, `hktvmall`, or any domain), it searches Google Images for `site:<domain>` product pages, opens up to 5, and reads the price from structured data or the price printed at the top of the page. Each offer gets a `ref`. A `null` price means the page did not show one. |
-| `show_products` | `{"refs", "say", "follow_up"?}`. Shows up to 3 refs as cards. Card data comes from the cached search result, so the model cannot change a price or link. Each card carries `sig`, the server seal. After any tool returns refs, the next round is forced to call `show_products`. `say` is the reply under the cards, and the turn ends there without another model round. An optional `follow_up` (`{prompt, options}`) becomes a question card. The store link behind the first 3 offers of each search is looked up while the model is still choosing, so the cards rarely wait for it. |
+| `show_products` | Not a model tool. When a round's tools return refs, the server shows up to 5 of them as cards at once: the searches take turns, repeated names are skipped, and priced offers come first. Card data comes from the cached search result, so the model cannot change a price or link. Each card carries `sig`, the server seal. Offers that were not shown are dropped from the model's context, and the next round may only write the answer or ask one `ask_user` question. The store link behind the first 5 offers of each search is looked up in the background; cards show after at most 0.5 s and are sent again with the store links before the turn ends. |
 | `web_search` | Google search in `region`. Titles, links, snippets. |
 | `open_page` | Reads one https page: JSON-LD product, price, picture, page text. Private and local addresses are refused. A store product page returns a `ref`. |
 | `buy` | `{"items": [{"ref", "qty"}]}`, up to 5 lines, refs from shown cards only. The server rebuilds each item from its cache, seals it, and quotes it. It pays nothing. The model gets `{awaiting_shopper, total, currency, live, items}` or `{paid: false, reason}`; the page gets `ui.kind == "order"` with the sealed items, or a refusal card. After the shopper presses pay or cancel, the page adds `shopper` (`paid` with amount and record, `canceled`, or `refused`) to that tool message, so the next turn knows. The prompt allows `buy` only when the shopper clearly asks to buy a shown product. The server writes the one-line summary under the order (items, total, press 確認付款) or the refusal reason, and the turn ends without another model round. |
@@ -89,6 +89,7 @@ Search results are cached in `data/cache.db` for 6 hours and page reads for 2 ho
 | `retract` | | Drop the text of this round. It was said before a tool call. |
 | `tool_start` | `id`, `name`, `label` | A tool started. |
 | `tool_result` | `id`, `name`, `ok`, `summary`, `ui` | A tool finished. `ui.kind == "products"` carries the cards. |
+| `cards` | `id`, `items` | The same cards again with the store links found since. Replace the cards. |
 | `ask` | `id`, `questions` | Question card. The next request sends `{"role": "tool", "tool_call_id": id, "content": "<answer JSON>"}`. |
 | `done` | `messages` | New assistant and tool messages to add to the thread. |
 | `error` | `message` | Shown with a retry button. |

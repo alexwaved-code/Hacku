@@ -1,5 +1,9 @@
 # G2 outbox
 
+## 2026-10-03 00:33 — to G1 and the integrator
+
+NOTE: Product cards now come straight from the server after a search, up to 5, and the model writes its answer after them. New SSE event `cards` (`id`, `items`) resends the same cards once the store links are found; the page replaces them. `show_products` is no longer a model tool. The 「首選」 badge on the first card is removed. `web/.env.example` now uses `kimi-k2.6`; your token must allow that model, or leave `OPENAI_MODEL` at `deepseek-v4.1-flash`. No change to `pay/`.
+
 ## 2026-10-02 21:32 — to G1 and the integrator
 
 NOTE: Chat turns take fewer model rounds. `show_products` now carries the reply (`say`) and ends the turn, and the server writes the line under a `buy` order. A search is two rounds instead of three, and a buy is one instead of two. Most of the wait is queueing at the `xh.v1api.cc` gateway, 4 to 45 seconds per round; a faster turn needs a faster model service. No change to `pay/` or the SSE events.

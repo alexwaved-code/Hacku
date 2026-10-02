@@ -641,18 +641,6 @@ a.card:hover {
   object-fit: contain;
 }
 
-.badge {
-  position: absolute;
-  top: 8px;
-  left: 8px;
-  padding: 2px 8px;
-  border-radius: 999px;
-  background: var(--user);
-  color: var(--user-text);
-  font-size: 12px;
-  font-weight: 600;
-}
-
 .info {
   flex: 1;
   padding: 10px 12px 4px;
@@ -1023,12 +1011,6 @@ a.card:hover {
     position: absolute;
     inset: 0;
     padding: 8px;
-  }
-
-  .badge {
-    top: 6px;
-    left: 6px;
-    font-size: 11px;
   }
 
   .info {

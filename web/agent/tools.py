@@ -11,9 +11,10 @@ import money
 
 from . import web
 
-MAX_CARDS = 3
-EARLY_LINKS = 3
-LINK_WAIT = 12
+MAX_CARDS = 5
+EARLY_LINKS = MAX_CARDS
+LINK_WAIT = 0.5
+LINK_REFRESH = 8
 CARD_TOOL = "show_products"
 ASK_TOOL = "ask_user"
 BUY_TOOL = "buy"
@@ -125,46 +126,6 @@ TOOL_SCHEMAS = [
                     "max_price": {"type": "number", "description": "Highest price in the region's currency, if the user gave a budget."},
                 },
                 "required": ["query"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "show_products",
-            "description": (
-                "Show the user up to 3 products as cards with picture, price, store, and link, plus your answer. "
-                "Pass refs from shop_search or open_page. Call this once, with your final picks. "
-                "The turn ends after it, so put your whole reply in say."
-            ),
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "refs": {
-                        "type": "array",
-                        "items": {"type": "string"},
-                        "minItems": 1,
-                        "maxItems": MAX_CARDS,
-                        "description": "Best pick first.",
-                    },
-                    "say": {
-                        "type": "string",
-                        "description": (
-                            "Your reply under the cards, at most 2 short sentences in the user's language: "
-                            "why the first card is the pick and the main trade-off. Do not repeat the prices."
-                        ),
-                    },
-                    "follow_up": {
-                        "type": "object",
-                        "description": "Optional. One choice question when the picks differ on a trade-off, e.g. 更重視音質還是續航？",
-                        "properties": {
-                            "prompt": {"type": "string"},
-                            "options": {"type": "array", "items": {"type": "string"}, "minItems": 2, "maxItems": MAX_OPTIONS},
-                        },
-                        "required": ["prompt", "options"],
-                    },
-                },
-                "required": ["refs", "say"],
             },
         },
     },
@@ -323,7 +284,7 @@ def shop_search(query, max_price=None, region=None, store=""):
     if store:
         offers, site = _store_offers(query, store, region)
     else:
-        offers, site = web.shopping(query, region=region or "hk"), None
+        offers, site = web.shopping(query, limit=40, region=region or "hk"), None
         for offer in offers:
             offer["region"] = region or "hk"
     currency = web.region_currency(region or "hk")
@@ -391,6 +352,17 @@ def show_products(refs):
         "model": model,
         "ui": {"kind": "products", "items": [_card(item) for item in items]},
     }
+
+
+def refresh_cards(refs, shown):
+    """The shown cards again once the store links behind them are found, or None when no link changed."""
+    with _lock:
+        items = [_cache.get(str(ref)) for ref in refs]
+    if not all(items) or len(items) != len(shown):
+        return None
+    wait([_link_future(item) for item in items], timeout=LINK_REFRESH)
+    cards = [_card(item) for item in items]
+    return cards if [card["url"] for card in cards] != [card["url"] for card in shown] else None
 
 
 def web_search(query, region=None):
@@ -484,6 +456,21 @@ def buy(entries):
 
 def has_refs(model):
     return bool(model.get("ref") or any(row.get("ref") for row in model.get("offers") or []))
+
+
+def pick_cards(models):
+    """Up to MAX_CARDS refs from one round's results: searches take turns, repeats are skipped, priced offers first."""
+    lists = [[model] if model.get("ref") else model.get("offers") or [] for model in models]
+    picked, seen = [], set()
+    for rank in range(max(map(len, lists), default=0)):
+        for rows in lists:
+            row = rows[rank] if rank < len(rows) else None
+            key = re.sub(r"\W+", "", str((row or {}).get("name") or "").lower())[:40]
+            if row and row.get("ref") and key not in seen:
+                seen.add(key)
+                picked.append(row)
+    picked.sort(key=lambda row: row.get("price") is None)
+    return [row["ref"] for row in picked[:MAX_CARDS]]
 
 
 def _link_future(item):
@@ -686,7 +673,7 @@ def _card(item):
         "reviews": item.get("reviews"),
         "image": _safe_url(item.get("image")),
         "url": _safe_url(item.get("url")),
-        "link_kind": item.get("link_kind", "store"),
+        "link_kind": item.get("link_kind") or ("search" if _is_google(item.get("url")) else "store"),
         "observed_at": item.get("observed_at"),
         "flagged": bool(item.get("flagged")),
     }
