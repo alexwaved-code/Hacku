@@ -32,6 +32,15 @@ const HackuCart = (() => {
         store: product.store || "",
         image: product.image || "",
         url: product.url || "",
+        sealed: {
+          name: product.name ?? null,
+          store: product.store ?? null,
+          price: product.price ?? null,
+          currency: product.currency ?? null,
+          url: product.url ?? null,
+          image: product.image ?? null,
+        },
+        sig: product.sig || "",
         qty: 1,
       });
     }
@@ -54,5 +63,12 @@ const HackuCart = (() => {
     return load().reduce((sum, item) => sum + (Number(item.qty) || 1), 0);
   }
 
-  return { load, add, has, remove, count, idOf };
+  function removeMany(ids) {
+    const drop = new Set(ids);
+    const items = load().filter((item) => !drop.has(item.id));
+    save(items);
+    return items;
+  }
+
+  return { load, add, has, remove, removeMany, count, idOf };
 })();

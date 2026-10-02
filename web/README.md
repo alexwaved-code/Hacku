@@ -99,3 +99,14 @@ The response is SSE (`text/event-stream`), one JSON object per `data:` line:
 | `POST /api/revoke` | | Revokes consent. Settlement stays closed after that. |
 
 `web/verifier.py` rates each listing 1 to 3 with a second model (`VERIFY_API_BASE`, `VERIFY_API_KEY`, `VERIFY_MODEL` in the repo-root `.env`). Until it is set, every listing is unrated and nothing settles.
+
+## Cart checkout (Stripe test mode)
+
+Put a Stripe test key in `web/.env` as `STRIPE_SECRET_KEY=sk_test_...` (https://dashboard.stripe.com/test/apikeys). Live keys are refused.
+
+| Route | Body | Result |
+|---|---|---|
+| `POST /api/checkout` | `{"items": [{name, store, price, currency, url, image, id, qty, sig}]}` | `{url, id, ratings}`. The page opens `url`. Errors: 403 consent, 409 signature or verifier rating, 503 no key. |
+| `GET /api/checkout/status?session=cs_test_...` | | `{paid, amount, currency, items, hash}`, read back from Stripe |
+
+Test card: `4242 4242 4242 4242`, any future date, any CVC.

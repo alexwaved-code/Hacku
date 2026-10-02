@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 import json
 import os
 import socket
@@ -11,7 +11,7 @@ import urllib.error
 import urllib.request
 
 import loop
-from agent import harness
+from agent import checkout, harness
 from agent_prompt import explain_messages
 
 ROOT = Path(__file__).resolve().parent
@@ -74,6 +74,10 @@ class Handler(SimpleHTTPRequestHandler):
         super().log_message("%s", message)
 
     def do_GET(self):
+        if urlparse(self.path).path == "/api/checkout/status":
+            query = parse_qs(urlparse(self.path).query)
+            self.checkout_reply(lambda: checkout.status((query.get("session") or [""])[0]))
+            return
         if urlparse(self.path).path == "/api/consent":
             self.send_json(200, loop.consent_view())
             return
@@ -96,6 +100,9 @@ class Handler(SimpleHTTPRequestHandler):
 
     def do_POST(self):
         path = urlparse(self.path).path
+        if path == "/api/checkout":
+            self.checkout_route()
+            return
         if path in PURCHASE_ROUTES:
             self.purchase_route(path)
             return
@@ -142,6 +149,34 @@ class Handler(SimpleHTTPRequestHandler):
         except Exception:
             traceback.print_exc(file=sys.stderr)
             self.safe_emit(emit, {"type": "error", "message": "助理發生內部錯誤。"})
+
+    def checkout_route(self):
+        length = int(self.headers.get("Content-Length", "0") or "0")
+        if length <= 0 or length > MAX_BODY:
+            self.send_json(400, {"error": "Request is empty or too large."})
+            return
+        try:
+            payload = json.loads(self.rfile.read(length).decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            self.send_json(400, {"error": "Request is not JSON."})
+            return
+        items = payload.get("items") if isinstance(payload, dict) else None
+        self.checkout_reply(lambda: checkout.create(items, CONFIG))
+
+    def checkout_reply(self, action):
+        try:
+            result = action()
+        except checkout.CheckoutError as error:
+            body = {"error": str(error)}
+            if error.detail:
+                body.update(error.detail)
+            self.send_json(error.status, body)
+            return
+        except Exception:
+            traceback.print_exc()
+            self.send_json(500, {"error": "結帳時發生錯誤，請再試一次。"})
+            return
+        self.send_json(200, result)
 
     def purchase_route(self, path):
         length = int(self.headers.get("Content-Length", "0") or "0")
@@ -297,6 +332,8 @@ def main():
         print("Missing OPENAI_API_KEY. Copy web/.env.example to web/.env", flush=True)
     if not os.environ.get("SERPER_API_KEY"):
         print("Missing SERPER_API_KEY. Live product search is off.", flush=True)
+    if not os.environ.get("STRIPE_SECRET_KEY", "").startswith(("sk_test_", "rk_test_")):
+        print("No Stripe test key. Cart checkout is off.", flush=True)
     server.serve_forever()
 
 

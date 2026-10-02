@@ -5,7 +5,7 @@ from collections import OrderedDict
 from concurrent.futures import ThreadPoolExecutor
 from itertools import count
 
-from . import web
+from . import checkout, web
 
 MAX_CARDS = 3
 CARD_TOOL = "show_products"
@@ -530,7 +530,7 @@ def _remember(item):
 
 
 def _card(item):
-    return {
+    card = {
         "name": item["name"],
         "store": item["store"],
         "price": item["price"],
@@ -543,6 +543,8 @@ def _card(item):
         "observed_at": item.get("observed_at"),
         "flagged": bool(item.get("flagged")),
     }
+    card["sig"] = checkout.seal(card)
+    return card
 
 
 def _price_text(price, currency):
