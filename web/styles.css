@@ -38,6 +38,10 @@ body {
 }
 
 .chat-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
   padding: 18px 20px;
   border-bottom: 1px solid var(--line);
 }
@@ -46,6 +50,27 @@ body {
   margin: 0;
   font-size: 18px;
   font-weight: 650;
+}
+
+.consent {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+#revoke {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 6px 12px;
+  background: #fff;
+  color: var(--ink);
+  font: inherit;
+  cursor: pointer;
+}
+
+#revoke:disabled {
+  opacity: 0.45;
+  cursor: default;
 }
 
 .messages {
@@ -81,15 +106,103 @@ body {
   border-bottom-left-radius: 4px;
 }
 
+.message.turn {
+  max-width: 100%;
+  align-self: stretch;
+}
+
+.step + .step {
+  margin-top: 12px;
+}
+
+.step h2 {
+  margin: 0 0 4px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.step p {
+  margin: 0;
+}
+
+.step.stop h2 {
+  color: #8a3d2f;
+}
+
+.rail {
+  margin-top: 6px;
+}
+
+.rail.recommended {
+  font-weight: 650;
+}
+
+.why {
+  margin: 12px 0 0;
+  color: var(--muted);
+}
+
+.authorize {
+  margin-top: 10px;
+  border: 0;
+  border-radius: 12px;
+  padding: 8px 14px;
+  background: var(--user);
+  color: var(--user-text);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.authorize:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
 .message.pending {
   color: var(--muted);
+}
+
+.dock {
+  border-top: 1px solid var(--line);
+  padding: 14px 20px 20px;
+}
+
+.guide p {
+  margin: 0 0 10px;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.examples {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.examples button {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 6px 12px;
+  background: #fff;
+  color: var(--ink);
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.examples button:disabled {
+  opacity: 0.45;
+  cursor: default;
 }
 
 .composer {
   display: flex;
   gap: 8px;
-  padding: 16px 20px 20px;
-  border-top: 1px solid var(--line);
+  margin-top: 12px;
 }
 
 .composer input {

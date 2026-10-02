@@ -6,8 +6,8 @@ Integrator: `alexwaved-code` (merges `g1`–`g4` into `main`).
 
 | Group | Branch | Humans | Owns | Do not touch |
 |---|---|---|---|---|
-| G1 | `g1` | | | other `collab/gN/**` |
-| G2 | `g2` | Jacinto | `web/**` | other `collab/gN/**` |
+| G1 | `g1` | Jacinto | `web/**` | other `collab/gN/**` |
+| G2 | `g2` | | | other `collab/gN/**` |
 | G3 | `g3` | | | other `collab/gN/**` |
 | G4 | `g4` | | | other `collab/gN/**` |
 

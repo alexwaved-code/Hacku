@@ -9,21 +9,35 @@
   <body>
     <main class="chat">
       <header class="chat-header">
-        <h1>Shopping agent</h1>
+        <div>
+          <h1>Shopping agent</h1>
+          <p id="consent" class="consent">Checking consent…</p>
+        </div>
+        <button type="button" id="revoke">Revoke</button>
       </header>
       <ol id="messages" class="messages" aria-live="polite"></ol>
-      <form id="composer" class="composer">
-        <label class="sr-only" for="message">Message</label>
-        <input
-          id="message"
-          name="message"
-          type="text"
-          autocomplete="off"
-          placeholder="Message"
-          required
-        />
-        <button type="submit">Send</button>
-      </form>
+      <footer class="dock">
+        <section class="guide" aria-label="How to state a spending decision">
+          <p>Choose a category and an amount. You will see why a rail wins, then you authorize. Nothing is charged before that.</p>
+          <div class="examples">
+            <button type="button" data-example="Buy groceries for 80 USD.">Groceries, $80</button>
+            <button type="button" data-example="Buy an entertainment ticket for 40 USD. Shipping is 5 USD and tax is 2 USD.">Entertainment, $40 plus fees</button>
+            <button type="button" data-example="Buy an entertainment ticket for 70 USD.">Entertainment, $70</button>
+          </div>
+        </section>
+        <form id="composer" class="composer">
+          <label class="sr-only" for="message">Spending decision</label>
+          <input
+            id="message"
+            name="message"
+            type="text"
+            autocomplete="off"
+            placeholder="Category, amount, and fees if you know them"
+            required
+          />
+          <button type="submit">Send</button>
+        </form>
+      </footer>
     </main>
     <script src="app.js"></script>
   </body>
