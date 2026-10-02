@@ -46,12 +46,12 @@ function cardBlock() {
   if (!card) return box;
   if (card.saved) {
     box.append(
-      el("p", "wallet-line", `代理人付款卡：${card.label}。在授權上限內，助理可以直接付款。`),
-      button("pill", "移除付款卡", () => send("/api/card/forget", {}, "已移除付款卡，助理不能再直接付款。", (data) => (card = data)))
+      el("p", "wallet-line", `代理人付款卡：${card.label}。助理準備好訂單後，你在對話按「確認付款」就用這張卡付。`),
+      button("pill", "移除付款卡", () => send("/api/card/forget", {}, "已移除付款卡，對話裡的訂單不能再付款。", (data) => (card = data)))
     );
   } else {
     box.append(
-      el("p", "wallet-line", "還沒有代理人付款卡。存一張後，你在對話說「幫我買」，助理就能在授權上限內直接付款。"),
+      el("p", "wallet-line", "還沒有代理人付款卡。存一張後，你在對話說「幫我買」，助理會在授權上限內準備訂單，你按「確認付款」就付款。"),
       button("pay", "儲存 Stripe 測試卡（Visa 4242）", () => send("/api/card", {}, "已儲存付款卡。", (data) => (card = data)))
     );
   }

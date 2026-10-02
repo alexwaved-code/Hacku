@@ -15,7 +15,7 @@ from pay import checkout, mandate, wallet
 
 MAX_BODY = 600_000
 MAX_MESSAGES = 80
-PAY_ROUTES = ("/api/checkout", "/api/mandate", "/api/mandate/revoke", "/api/card", "/api/card/forget")
+PAY_ROUTES = ("/api/checkout", "/api/pay", "/api/mandate", "/api/mandate/revoke", "/api/card", "/api/card/forget")
 GET_ROUTES = {
     "/api/mandate": mandate.view,
     "/api/card": wallet.view,
@@ -129,6 +129,8 @@ class Handler(SimpleHTTPRequestHandler):
     def pay_action(self, path, payload):
         if path == "/api/checkout":
             return checkout.create(payload.get("items"))
+        if path == "/api/pay":
+            return checkout.charge(payload.get("items"))
         if path == "/api/mandate/revoke":
             return mandate.revoke()
         if path == "/api/card":
@@ -171,14 +173,14 @@ class Handler(SimpleHTTPRequestHandler):
         self.wfile.write(raw)
 
 
-def agent_buy(items):
+def agent_quote(items):
     try:
-        return checkout.charge(items)
+        return {"ok": True, **checkout.quote(items)}
     except checkout.CheckoutError as error:
-        return {"paid": False, "reason": str(error)}
+        return {"ok": False, "reason": str(error)}
 
 
-tools.set_buyer(agent_buy)
+tools.set_quoter(agent_quote)
 
 
 def normalize_messages(raw):

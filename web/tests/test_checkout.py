@@ -97,6 +97,23 @@ class AgentChargeTest(TempData):
                 checkout.charge([item(price=100)])
         stripe.assert_not_called()
 
+    def test_quote_checks_without_charging(self):
+        mandate.issue({"HKD": 500}, 7)
+        with (
+            mock.patch.object(checkout.wallet, "current", return_value=SAVED),
+            mock.patch.object(checkout.verifier, "verify_products") as verify,
+            mock.patch.object(checkout.stripe_api, "call") as stripe,
+        ):
+            order = checkout.quote([item(qty=2)])
+            with self.assertRaises(checkout.CheckoutError) as caught:
+                checkout.quote([item(price=600)])
+        self.assertEqual((order["total"], order["currency"], order["cap"]), (200.0, "HKD", 500))
+        self.assertEqual(order["card"], "Visa •••• 4242")
+        self.assertIn("上限", str(caught.exception))
+        stripe.assert_not_called()
+        verify.assert_not_called()
+        self.assertEqual(checkout.recent()["orders"], [])
+
     def test_charges_once_and_records_it(self):
         mandate.issue({"HKD": 500}, 7)
         patches = (

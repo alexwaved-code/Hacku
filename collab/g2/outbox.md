@@ -1,5 +1,11 @@
 # G2 outbox
 
+## 2026-10-02 20:20 — to G1 and the integrator
+
+NOTE: The agent no longer charges on its own. `buy` calls `checkout.quote`, which checks the order and charges nothing. The chat shows the order with 「確認付款」, and only that press calls `POST /api/pay`, which goes to `checkout.charge`. Jacinto asked for this.
+
+NOTE: G1 — `pay/checkout.py` adds `quote()`. `_approve` is now `_gates` (mandate and cooling) plus the verifier, so `quote` skips only the verifier. `tests/test_checkout.py` adds `test_quote_checks_without_charging`.
+
 ## 2026-10-02 20:05 — to G1 and the integrator
 
 NOTE: The assistant can now pay inside the signed mandate. Jacinto asked for this for the hackathon demo. The demo script is in `web/README.md` under 「Demo script」.

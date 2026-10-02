@@ -187,10 +187,11 @@ TOOL_SCHEMAS = [
         "function": {
             "name": BUY_TOOL,
             "description": (
-                "Pay now for products shown on cards, with the shopper's saved card, inside their signed spending mandate. "
-                "Call it only when the shopper clearly asks to buy specific products from the cards. All items must come from one store. "
-                "The payment service refuses when the mandate does not cover the total, a cooling period is open, "
-                "or the verifier does not accept every item; the result then says why."
+                "Prepare an order for products shown on cards. Nothing is paid by this tool. "
+                "The page shows the order with a pay button, and the payment happens only if the shopper presses it. "
+                "Call it only when the shopper clearly asks to buy specific products from the cards. All items must share one currency. "
+                "It is refused at once when there is no saved card, the mandate does not cover the total, or a cooling period is open; "
+                "the result then says why."
             ),
             "parameters": {
                 "type": "object",
@@ -218,13 +219,13 @@ TOOL_SCHEMAS = [
 _cache = OrderedDict()
 _lock = threading.Lock()
 _counter = count(1)
-_buyer = None
+_quoter = None
 
 
-def set_buyer(pay):
-    """pay(items) charges sealed card items and returns a receipt or {'paid': False, 'reason': ...}."""
-    global _buyer
-    _buyer = pay
+def set_quoter(quote):
+    """quote(items) checks sealed card items without charging. Returns {'ok': True, total, ...} or {'ok': False, 'reason'}."""
+    global _quoter
+    _quoter = quote
 
 
 def tool_label(name, args):
@@ -245,7 +246,7 @@ def tool_label(name, args):
     if name == ASK_TOOL:
         return "想先問你幾個問題"
     if name == BUY_TOOL:
-        return "檢查授權並付款"
+        return "準備訂單"
     return name
 
 
@@ -409,7 +410,7 @@ def open_page(url):
 
 
 def buy(entries):
-    if _buyer is None:
+    if _quoter is None:
         return _fail("Payments are not connected on this server.", "付款未連線")
     if not isinstance(entries, list) or not entries:
         return _fail("items must list at least one ref.", "沒有商品")
@@ -427,28 +428,27 @@ def buy(entries):
     for item, qty in chosen:
         card = _card(item)
         payload.append({**{field: card[field] for field in cards.FIELDS}, "id": card["url"] or card["name"], "qty": qty, "sig": card["sig"]})
-    result = _buyer(payload)
-    if not result.get("paid"):
+    result = _quoter(payload)
+    if not result.get("ok"):
         return {
             "ok": True,
-            "summary": "沒有付款",
+            "summary": "不能下單",
             "model": {"paid": False, "reason": result.get("reason")},
             "ui": {"kind": "receipt", "paid": False, "reason": result.get("reason")},
         }
-    receipt = {key: result[key] for key in ("amount", "currency", "card", "hash", "items")}
+    order = {key: result[key] for key in ("total", "currency", "card", "cap")}
     return {
         "ok": True,
-        "summary": f"已付款 {money.text(result['amount'], result['currency'])}",
+        "summary": f"待確認 {money.text(result['total'], result['currency'])}",
         "model": {
-            "paid": True,
-            "amount": result["amount"],
+            "paid": False,
+            "awaiting_shopper": True,
+            "total": result["total"],
             "currency": result["currency"],
-            "card": result["card"],
-            "record": (result["hash"] or "")[:12],
-            "items": [entry["name"] for entry in result["items"]],
-            "note": "Stripe test mode: no real money moved and the store did not receive an order.",
+            "items": [{"name": line["name"], "qty": line["qty"]} for line in result["items"]],
+            "note": "Nothing is paid yet. The shopper sees this order with a pay button. Ask them to check it and press 確認付款.",
         },
-        "ui": {"kind": "receipt", "paid": True, **receipt},
+        "ui": {"kind": "order", **order, "lines": result["items"], "items": payload},
     }
 
 
