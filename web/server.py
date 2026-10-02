@@ -64,7 +64,9 @@ class Handler(SimpleHTTPRequestHandler):
             {
                 "model": MODEL,
                 "messages": messages,
-                "stream": False,
+                "stream": True,
+                "max_tokens": 1024,
+                "thinking": {"type": "disabled"},
             }
         ).encode("utf-8")
         request = urllib.request.Request(
@@ -78,8 +80,7 @@ class Handler(SimpleHTTPRequestHandler):
         )
 
         try:
-            with urllib.request.urlopen(request, timeout=120) as response:
-                data = json.loads(response.read().decode("utf-8"))
+            upstream = urllib.request.urlopen(request, timeout=60)
         except urllib.error.HTTPError as error:
             detail = read_upstream_error(error)
             self.send_json(error.code if 400 <= error.code < 600 else 502, {"error": detail})
@@ -88,11 +89,39 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_json(502, {"error": "The model did not respond."})
             return
 
-        reply = extract_reply(data)
-        if not reply:
-            self.send_json(502, {"error": "The model returned an empty reply."})
-            return
-        self.send_json(200, {"reply": reply})
+        self.send_response(200)
+        self.send_header("Content-Type", "text/event-stream; charset=utf-8")
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Connection", "close")
+        self.end_headers()
+
+        try:
+            while True:
+                raw = upstream.readline()
+                if not raw:
+                    break
+                line = raw.decode("utf-8", errors="replace").strip()
+                if not line.startswith("data:"):
+                    continue
+                data = line[5:].strip()
+                if data == "[DONE]":
+                    break
+                delta = extract_delta(data)
+                if not delta:
+                    continue
+                self.wfile.write(f"data: {json.dumps({'delta': delta}, ensure_ascii=False)}\n\n".encode("utf-8"))
+                self.wfile.flush()
+            self.wfile.write(b'data: {"done":true}\n\n')
+            self.wfile.flush()
+        except Exception:
+            try:
+                self.wfile.write(b'data: {"error":"The model stream stopped."}\n\n')
+                self.wfile.flush()
+            except Exception:
+                pass
+        finally:
+            upstream.close()
+            self.close_connection = True
 
     def send_json(self, status, payload):
         raw = json.dumps(payload).encode("utf-8")
@@ -125,18 +154,14 @@ def normalize_messages(raw):
     return messages
 
 
-def extract_reply(data):
+def extract_delta(raw):
     try:
-        message = data["choices"][0]["message"]
-    except (KeyError, IndexError, TypeError):
+        payload = json.loads(raw)
+        delta = payload["choices"][0]["delta"]
+    except (json.JSONDecodeError, KeyError, IndexError, TypeError):
         return ""
-    content = message.get("content")
-    if isinstance(content, str) and content.strip():
-        return content.strip()
-    reasoning = message.get("reasoning_content")
-    if isinstance(reasoning, str) and reasoning.strip():
-        return reasoning.strip()
-    return ""
+    content = delta.get("content")
+    return content if isinstance(content, str) else ""
 
 
 def read_upstream_error(error):
@@ -157,7 +182,11 @@ def read_upstream_error(error):
 
 def main():
     server = ThreadingHTTPServer((HOST, PORT), Handler)
-    print(f"http://{HOST}:{PORT}/")
+    print(f"http://{HOST}:{PORT}/", flush=True)
+    if API_KEY:
+        print(f"model {MODEL}", flush=True)
+    else:
+        print("Missing OPENAI_API_KEY. Copy web/.env.example to web/.env", flush=True)
     server.serve_forever()
 
 
