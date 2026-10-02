@@ -51,6 +51,13 @@ button {
   border-bottom: 1px solid var(--line);
 }
 
+.header-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
 .chat-header h1 {
   margin: 0;
   font-size: 18px;
@@ -70,6 +77,7 @@ button {
   background: #fff;
   color: var(--ink);
   font-size: 14px;
+  text-decoration: none;
   cursor: pointer;
 }
 
@@ -176,6 +184,28 @@ a.card:hover {
   transform: translateY(-1px);
 }
 
+.card-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.add-cart {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 7px 0;
+  background: #fff;
+  color: var(--ink);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.add-cart:hover {
+  border-color: var(--ink);
+}
+
 .pic {
   position: relative;
   aspect-ratio: 4 / 3;
@@ -266,6 +296,57 @@ a.card:hover {
 .product,
 .rail {
   margin-top: 6px;
+}
+
+.cart {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px;
+}
+
+.cart-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.cart-row {
+  display: grid;
+  grid-template-columns: 72px 1fr auto;
+  gap: 12px;
+  align-items: center;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: #fff;
+}
+
+.cart-pic {
+  width: 72px;
+  height: 72px;
+  object-fit: contain;
+  background: #fff;
+}
+
+.cart-name {
+  margin: 0;
+  color: inherit;
+  font-weight: 650;
+  text-decoration: none;
+}
+
+.cart-total {
+  margin: 16px 0 0;
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.empty {
+  margin: 0;
+  color: var(--muted);
 }
 
 .go {

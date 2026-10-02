@@ -34,12 +34,22 @@ def load_env(path):
         os.environ[key.strip()] = value.strip()
 
 
+load_env(ROOT.parent / ".env")
 load_env(ROOT / ".env")
 
+
+def openai_base():
+    explicit = os.environ.get("OPENAI_BASE_URL", "").strip().rstrip("/")
+    if explicit:
+        return explicit
+    legacy = os.environ.get("API_BASE", "https://xh.v1api.cc").strip().rstrip("/")
+    return legacy if legacy.endswith("/v1") else legacy + "/v1"
+
+
 CONFIG = {
-    "base_url": os.environ.get("OPENAI_BASE_URL", "https://xh.v1api.cc/v1").rstrip("/"),
-    "api_key": os.environ.get("OPENAI_API_KEY", ""),
-    "model": os.environ.get("OPENAI_MODEL", "deepseek-v4.1-flash"),
+    "base_url": openai_base(),
+    "api_key": os.environ.get("OPENAI_API_KEY") or os.environ.get("API_KEY", ""),
+    "model": os.environ.get("OPENAI_MODEL") or os.environ.get("MODEL") or "deepseek-v4.1-flash",
     "timeout": 25,
 }
 
