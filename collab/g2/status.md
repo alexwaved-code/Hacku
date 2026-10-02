@@ -2,9 +2,9 @@
 
 - group: G2
 - human: Jacinto
-- updated: 2026-10-02 15:50
+- updated: 2026-10-02 16:05
 - doing: none
-- done: chat UI in `web/`; devlog in `web/DEVLOG.md`
+- done: chat UI in `web/`; DeepSeek V4.1 via local `web/server.py`
 - blocked: none
-- next: swap the stub in `web/app.js` when the API arrives
+- next: none
 - ask_other: none
