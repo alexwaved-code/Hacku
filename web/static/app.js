@@ -24,27 +24,6 @@ const CHATS_KEY = "hacku.chats";
 const CURRENT_KEY = "hacku.currentChat";
 const IDLE_TIMEOUT_MS = 75000;
 const GREETING = "想買什麼？說出預算、用途，或想逛的商店，我幫你上網查。其他問題也可以問我。";
-const PLACEHOLDER = "想買什麼，或想問什麼？";
-const ASK_PLACEHOLDER = "點上面的選項，或直接打字回答";
-const EXAMPLES = [
-  ["降噪耳機", "HK$500 以內，通勤用的降噪耳機"],
-  ["行動電源", "可以充手提電腦的行動電源"],
-  ["淘寶手機殼", "淘寶上的 iPhone 16 手機殼"],
-  ["生日禮物", "送給爸爸的生日禮物，HK$800 以內"],
-];
-const FOLLOW_UPS = ["有沒有更便宜的？", "比較前兩個", "換個牌子看看"];
-const PHASES = {
-  plan: { label: "理解你的需求", hints: ["讀懂預算和用途", "決定要比哪些商店", "準備搜尋關鍵字"] },
-  think: { label: "整理剛拿到的資料", hints: ["看看結果夠不夠好", "決定下一步"] },
-  answer: { label: "比較商品，寫推薦", hints: ["比較價錢和評價", "檢查規格合不合用", "寫下重點"] },
-};
-const TOOL_HINTS = {
-  shop_search: ["連到 Google 購物", "讀取各家價錢", "濾掉超出預算的"],
-  web_search: ["搜尋網頁", "讀取搜尋結果"],
-  open_page: ["打開網頁", "讀取價錢和規格"],
-  show_products: ["比對商品名稱", "找商店連結"],
-  buy: ["核對商品和價錢", "檢查付款授權"],
-};
 const SKELETON_CARDS = 5;
 
 const state = {
@@ -56,7 +35,11 @@ const state = {
 const cardPainters = new Set();
 let cartSeen = null;
 let chatsSeen = null;
-const NUMERALS = { 一: 1, 二: 2, 兩: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9, 十: 10 };
+let lastMandate = null;
+const NUMERALS = { 一: 1, 二: 2, 兩: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9, 十: 10, first: 1, second: 2, third: 3, fourth: 4, fifth: 5 };
+const REF_ZH = /第\s*([一二兩三四五六七八九十]|\d{1,2})\s*(?:個|款|件|張|項)/;
+const REF_EN = /(?<![&\w])#([1-9])\b|\b(?:card|option|item|no\.)\s*#?([1-9])\b|\bthe\s+(first|second|third|fourth|fifth)(?:\s+(?:one|card|option|pick))?\b/i;
+const PICK_WORDS = /最推薦|推薦|首選|最適合|建議|recommend|best (?:pick|choice|bet|option)|top pick|go with|i'd (?:pick|choose)/i;
 
 els.form.addEventListener("submit", (event) => {
   event.preventDefault();
@@ -129,8 +112,25 @@ els.list.addEventListener("click", (event) => {
   card.classList.add("flash");
 });
 window.addEventListener("pagehide", saveChat);
+document.querySelectorAll("[data-lang]").forEach((button) => button.addEventListener("click", () => setLanguage(button.dataset.lang)));
+HackuText.apply();
 updateCartCount();
 renderMandate();
+
+function setLanguage(lang) {
+  if (lang === HackuText.get()) return;
+  HackuText.set(lang);
+  if (state.busy) {
+    els.input.placeholder = t(state.pendingAsk ? "askPlaceholder" : "placeholder");
+  } else {
+    const top = els.list.scrollTop;
+    restoreChat();
+    els.list.scrollTop = top;
+  }
+  renderChatList();
+  renderSideCart();
+  renderMandate(lastMandate);
+}
 
 /* ---------- Sending ---------- */
 
@@ -152,7 +152,7 @@ function takePendingAsk(payload) {
   if (!ask) return null;
   state.pendingAsk = null;
   state.openAsk = null;
-  els.input.placeholder = PLACEHOLDER;
+  els.input.placeholder = t("placeholder");
   ask.close(payload);
   return { role: "tool", tool_call_id: ask.id, content: JSON.stringify(payload) };
 }
@@ -189,13 +189,13 @@ async function runTurn(display, entries) {
   } catch (error) {
     if (turn.timedOut) {
       state.thread.length = base;
-      turn.fail("等太久沒有回應，請再試一次。", retry);
+      turn.fail(t("timeout"), retry);
     } else if (controller.signal.aborted) {
       const partial = turn.stop();
       if (partial) state.thread.push({ role: "assistant", content: partial });
     } else {
       state.thread.length = base;
-      turn.fail(error instanceof Error ? error.message : "發生錯誤。", retry);
+      turn.fail(error instanceof Error ? error.message : t("genericError"), retry);
     }
   } finally {
     state.controller = null;
@@ -221,12 +221,12 @@ async function streamChat(controller, turn) {
       response = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
-        body: JSON.stringify({ messages: state.thread }),
+        body: JSON.stringify({ messages: state.thread, lang: HackuText.get() }),
         signal: controller.signal,
       });
     } catch (error) {
       if (controller.signal.aborted) throw error;
-      throw new Error("連不上伺服器。請先執行 python3 web/server.py");
+      throw new Error(t("offline"));
     }
 
     if (!(response.headers.get("content-type") || "").includes("text/event-stream")) {
@@ -237,7 +237,7 @@ async function streamChat(controller, turn) {
       } catch {
         payload = {};
       }
-      throw new Error(payload.error || `請求失敗（${response.status}）`);
+      throw new Error(payload.error || t("requestFailed", response.status));
     }
 
     const reader = response.body.getReader();
@@ -262,12 +262,12 @@ async function streamChat(controller, turn) {
         else if (event.type === "cards") turn.showCards(event.items, true);
         else if (event.type === "phase") turn.phase(event.phase);
         else if (event.type === "ask") turn.ask(event);
-        else if (event.type === "error") throw new Error(event.message || "助理發生錯誤。");
+        else if (event.type === "error") throw new Error(event.message || t("agentError"));
         else if (event.type === "done") added = Array.isArray(event.messages) ? event.messages : [];
       }
     }
 
-    if (!added) throw new Error("連線中斷，請再試一次。");
+    if (!added) throw new Error(t("dropped"));
     return added;
   } finally {
     clearTimeout(idle);
@@ -322,8 +322,8 @@ function renderSideCart() {
         "div",
         { class: "cart-empty" },
         h("span", { class: "cart-empty-icon", "aria-hidden": "true" }, cartIcon()),
-        h("strong", {}, "購物車是空的"),
-        h("p", {}, "在商品卡按購物車圖示，或跟助理說「幫我買第一個」。")
+        h("strong", {}, t("cartEmpty")),
+        h("p", {}, t("cartEmptyHint"))
       )
     );
     renderSideTotal(items);
@@ -359,10 +359,10 @@ function sideCartItem(item, fresh) {
   };
   const minus = h(
     "button",
-    { type: "button", class: qty > 1 ? "qty-btn" : "qty-btn qty-remove", "aria-label": qty > 1 ? "減一個" : "移除", title: qty > 1 ? "減一個" : "移除" },
+    { type: "button", class: qty > 1 ? "qty-btn" : "qty-btn qty-remove", "aria-label": t(qty > 1 ? "less" : "remove"), title: t(qty > 1 ? "less" : "remove") },
     qty > 1 ? "−" : trashIcon()
   );
-  const plus = h("button", { type: "button", class: "qty-btn", "aria-label": "加一個", title: "加一個" }, "+");
+  const plus = h("button", { type: "button", class: "qty-btn", "aria-label": t("more"), title: t("more") }, "+");
   minus.addEventListener("click", () => change(-1));
   plus.addEventListener("click", () => change(1));
   row.append(
@@ -371,35 +371,38 @@ function sideCartItem(item, fresh) {
       "div",
       { class: "side-cart-body" },
       name,
-      h("p", { class: "side-cart-meta" }, item.store || "商店"),
+      h("p", { class: "side-cart-meta" }, item.store || t("store")),
       h(
         "div",
         { class: "side-cart-foot" },
         h("div", { class: "qty-step" }, minus, h("span", { class: "qty-count" }, String(qty)), plus),
-        h("strong", { class: "side-cart-price" }, line == null ? "價格見商店" : HackuMoney.text(line, item.currency))
+        h("strong", { class: "side-cart-price" }, line == null ? t("priceAtStore") : HackuMoney.text(line, item.currency))
       )
     )
   );
   return row;
 }
 
-async function renderMandate() {
+async function renderMandate(known = null) {
   const box = document.querySelector("#side-mandate");
   if (!box) return;
-  let mandate = null;
-  try {
-    const response = await fetch("/api/mandate");
-    if (response.ok) mandate = await response.json();
-  } catch {
-    /* The server is down; the chat shows its own error. */
+  let mandate = known;
+  if (!mandate) {
+    try {
+      const response = await fetch("/api/mandate");
+      if (response.ok) mandate = await response.json();
+    } catch {
+      /* The server is down; the chat shows its own error. */
+    }
   }
   if (!mandate) return;
+  lastMandate = mandate;
   const caps = Object.entries(mandate.caps || {})
     .sort(([a], [b]) => (b === "HKD") - (a === "HKD"))
     .map(([code, cap]) => HackuMoney.text(cap, code));
   const end = mandate.expires ? new Date(mandate.expires) : null;
   const valid = end && !Number.isNaN(end.getTime());
-  const until = valid ? `${end.getMonth() + 1}月${end.getDate()}日` : "";
+  const until = valid ? HackuText.date(end) : "";
   const days = valid ? Math.max(0, Math.ceil((end - Date.now()) / 86400000)) : null;
   const shield = lineIcon(mandate.valid ? "M12 3l7 3v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10V6l7-3zM9 12l2 2 4-4" : "M12 3l7 3v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10V6l7-3zM12 8v4M12 15.5v.5");
   box.className = `side-mandate ${mandate.valid ? "ok" : "missing"}`;
@@ -410,15 +413,15 @@ async function renderMandate() {
       { class: "mandate-body" },
       ...(mandate.valid
         ? [
-            h("strong", {}, "已授權助理付款"),
-            h("span", {}, `每筆上限 ${caps.join("、")}`),
-            until ? h("span", { class: "mandate-days" }, days > 0 ? `還有 ${days} 天・到 ${until}` : `今天到期`) : null,
+            h("strong", {}, t("mandateOk")),
+            h("span", {}, t("capEach", caps.join(t("sep")))),
+            until ? h("span", { class: "mandate-days" }, days > 0 ? t("daysLeft", { days, until }) : t("endsToday")) : null,
           ]
-        : [h("strong", {}, "還沒有付款授權"), h("span", {}, "簽好授權，助理才能幫你下單。")])
+        : [h("strong", {}, t("mandateMissing")), h("span", {}, t("mandateMissingHint"))])
     ),
     h("span", { class: "mandate-go", "aria-hidden": "true" }, lineIcon("M9 6l6 6-6 6"))
   );
-  box.title = mandate.valid ? "修改付款授權" : "簽署付款授權";
+  box.title = t(mandate.valid ? "editMandate" : "signMandate");
   box.hidden = false;
 }
 
@@ -434,7 +437,7 @@ function renderSideTotal(items) {
     return;
   }
   const count = items.reduce((n, item) => n + (Number(item.qty) || 1), 0);
-  if (label) label.textContent = `${count} 件商品`;
+  if (label) label.textContent = t("itemCount", count);
   const sums = new Map();
   let missing = false;
   for (const item of items) {
@@ -452,7 +455,7 @@ function renderSideTotal(items) {
   }
   total._amount = null;
   const parts = [...sums.entries()].map(([code, amount]) => HackuMoney.text(amount, code));
-  total.textContent = parts.length ? `${parts.join("、")}${missing ? "＋見商店" : ""}` : "見商店";
+  total.textContent = parts.length ? `${parts.join(t("sep"))}${missing ? t("plusStore") : ""}` : t("seeStore");
 }
 
 function countTo(node, amount, code) {
@@ -471,10 +474,10 @@ function countTo(node, amount, code) {
   }, 500);
   const started = performance.now();
   const step = (now) => {
-    const t = Math.min(1, (now - started) / 450);
-    const eased = 1 - (1 - t) ** 3;
-    node.textContent = t < 1 ? HackuMoney.text(Math.round(from + (amount - from) * eased), code) : HackuMoney.text(amount, code);
-    if (t < 1) node._frame = requestAnimationFrame(step);
+    const progress = Math.min(1, (now - started) / 450);
+    const eased = 1 - (1 - progress) ** 3;
+    node.textContent = progress < 1 ? HackuMoney.text(Math.round(from + (amount - from) * eased), code) : HackuMoney.text(amount, code);
+    if (progress < 1) node._frame = requestAnimationFrame(step);
   };
   node._frame = requestAnimationFrame(step);
   node.classList.remove("tick");
@@ -505,7 +508,7 @@ function setBusy(busy) {
 }
 
 function welcomeItem() {
-  const examples = EXAMPLES.map(([title, prompt], index) =>
+  const examples = t("examples").map(([title, prompt], index) =>
     h(
       "button",
       { type: "button", class: "example", style: `--i:${index}`, onclick: () => send(prompt) },
@@ -517,8 +520,8 @@ function welcomeItem() {
     "li",
     { class: "welcome" },
     h("img", { class: "welcome-logo", src: "logo.svg", alt: "" }),
-    h("h2", {}, "今天想買什麼？"),
-    h("p", {}, "說出預算和用途，我幫你上網比價，挑出最合適的。"),
+    h("h2", {}, t("welcomeTitle")),
+    h("p", {}, t("welcomeText")),
     h("div", { class: "examples" }, examples)
   );
 }
@@ -529,7 +532,7 @@ function resetChat() {
   state.thread = [];
   state.pendingAsk = null;
   state.openAsk = null;
-  els.input.placeholder = PLACEHOLDER;
+  els.input.placeholder = t("placeholder");
   els.input.value = "";
   sessionStorage.setItem(CURRENT_KEY, crypto.randomUUID());
   sessionStorage.removeItem(CHAT_KEY);
@@ -558,13 +561,13 @@ function loadChats() {
 }
 
 function chatGroup(chat) {
-  if (chat.pinned) return "釘選";
+  if (chat.pinned) return t("groupPinned");
   const day = (time) => new Date(time).setHours(0, 0, 0, 0);
   const diff = Math.round((day(Date.now()) - day(chat.updated || 0)) / 86400000);
-  if (diff <= 0) return "今天";
-  if (diff === 1) return "昨天";
-  if (diff < 7) return "過去 7 天";
-  return "更早";
+  if (diff <= 0) return t("groupToday");
+  if (diff === 1) return t("groupYesterday");
+  if (diff < 7) return t("groupWeek");
+  return t("groupOlder");
 }
 
 function renderChatList() {
@@ -580,7 +583,7 @@ function renderChatList() {
   els.chatList.replaceChildren();
   if (!chats.length) {
     els.chatList.append(
-      h("li", { class: "chat-empty" }, query ? `找不到「${els.chatSearch.value.trim()}」。` : "還沒有對話。問第一個問題後，會出現在這裡。")
+      h("li", { class: "chat-empty" }, query ? t("noMatch", els.chatSearch.value.trim()) : t("noChats"))
     );
     return;
   }
@@ -606,8 +609,8 @@ function renderChatList() {
 function chatRow(chat, current) {
   const button = h(
     "button",
-    { type: "button", class: "chat-open", title: chat.title || "對話" },
-    h("span", { class: "chat-title" }, chat.title || "對話")
+    { type: "button", class: "chat-open", title: chat.title || t("chat") },
+    h("span", { class: "chat-title" }, chat.title || t("chat"))
   );
   button.addEventListener("click", () => openChat(chat.id));
   const tool = (label, icon, onClick, extra = "") =>
@@ -622,9 +625,9 @@ function chatRow(chat, current) {
     h(
       "div",
       { class: "chat-tools" },
-      tool("重新命名", pencilIcon(), () => startRename(chat.id, button)),
-      tool(chat.pinned ? "取消釘選" : "釘選", pinIcon(), () => togglePin(chat.id), chat.pinned ? "pinned" : ""),
-      tool("刪除", trashIcon(), () => confirmDelete(chat.id, bar))
+      tool(t("rename"), pencilIcon(), () => startRename(chat.id, button)),
+      tool(t(chat.pinned ? "unpin" : "pin"), pinIcon(), () => togglePin(chat.id), chat.pinned ? "pinned" : ""),
+      tool(t("delete"), trashIcon(), () => confirmDelete(chat.id, bar))
     )
   );
   return h("li", { class: "chat-row", "data-id": chat.id }, bar);
@@ -632,8 +635,8 @@ function chatRow(chat, current) {
 
 function confirmDelete(id, bar) {
   const keep = () => renderChatList();
-  const yes = h("button", { type: "button", class: "chat-confirm-yes" }, "刪除");
-  const no = h("button", { type: "button", class: "chat-confirm-no" }, "取消");
+  const yes = h("button", { type: "button", class: "chat-confirm-yes" }, t("delete"));
+  const no = h("button", { type: "button", class: "chat-confirm-no" }, t("cancel"));
   yes.addEventListener("click", (event) => {
     event.stopPropagation();
     const row = bar.closest(".chat-row");
@@ -645,7 +648,7 @@ function confirmDelete(id, bar) {
     keep();
   });
   bar.classList.add("confirm");
-  bar.replaceChildren(h("span", { class: "chat-confirm-text" }, "刪除這個對話？"), yes, no);
+  bar.replaceChildren(h("span", { class: "chat-confirm-text" }, t("deleteChat")), yes, no);
   no.focus();
 }
 
@@ -664,7 +667,7 @@ function deleteChat(id) {
 function startRename(id, button) {
   const chat = loadChats().find((item) => item.id === id);
   if (!chat) return;
-  const input = h("input", { class: "chat-rename", value: chat.title || "", "aria-label": "對話名稱" });
+  const input = h("input", { class: "chat-rename", value: chat.title || "", "aria-label": t("chatName") });
   button.replaceWith(input);
   input.focus();
   input.select();
@@ -717,7 +720,7 @@ function restoreChat() {
   const saved = readChat();
   state.pendingAsk = null;
   state.openAsk = null;
-  els.input.placeholder = PLACEHOLDER;
+  els.input.placeholder = t("placeholder");
   if (!saved) {
     els.list.replaceChildren(welcomeItem());
     return;
@@ -736,7 +739,7 @@ function restoreChat() {
     els.list.lastElementChild?.append(card.el);
     state.pendingAsk = { id: saved.openAsk.id, close: card.close };
     state.openAsk = saved.openAsk;
-    els.input.placeholder = ASK_PLACEHOLDER;
+    els.input.placeholder = t("askPlaceholder");
   }
 }
 
@@ -828,7 +831,7 @@ function createTurn() {
   const cards = h("div", { class: "cards" });
   const receipts = h("div", { class: "receipts" });
   const text = h("div", { class: "text" });
-  const typing = h("div", { class: "typing", hidden: true, "aria-label": "正在寫回覆" }, h("span"), h("span"), h("span"));
+  const typing = h("div", { class: "typing", hidden: true, "aria-label": t("writing") }, h("span"), h("span"), h("span"));
   const item = h("li", { class: "message agent turn" }, activity.el, cards, receipts, text, typing);
   item._receipts = [];
   els.list.append(item);
@@ -900,14 +903,14 @@ function createTurn() {
       }
     },
     ask(event) {
-      activity.finish("需要你選一下");
+      activity.finish(t("needChoice"));
       typing.hidden = true;
       clearSkeleton();
       const card = askCard(event.questions || []);
       item.append(card.el);
       state.openAsk = { id: event.id, questions: event.questions || [] };
       state.pendingAsk = { id: event.id, close: card.close };
-      els.input.placeholder = ASK_PLACEHOLDER;
+      els.input.placeholder = t("askPlaceholder");
       scrollToEnd();
     },
     async finish() {
@@ -916,24 +919,24 @@ function createTurn() {
       typing.remove();
       clearSkeleton();
       markPick(item, item._markdown);
-      activity.finish("完成");
+      activity.finish(t("done"));
       item.querySelector(".ask button")?.focus({ preventScroll: true });
     },
     addActions(onRetry) {
       const said = typer.text().trim();
-      const copy = h("button", { type: "button", class: "act-btn", title: "複製回覆" }, copyIcon(), "複製");
+      const copy = h("button", { type: "button", class: "act-btn", title: t("copyReply") }, copyIcon(), t("copy"));
       copy.addEventListener("click", async () => {
         try {
           await navigator.clipboard.writeText(said);
-          copy.lastChild.textContent = "已複製";
+          copy.lastChild.textContent = t("copied");
           setTimeout(() => {
-            copy.lastChild.textContent = "複製";
+            copy.lastChild.textContent = t("copy");
           }, 1400);
         } catch {
-          copy.lastChild.textContent = "無法複製";
+          copy.lastChild.textContent = t("copyFailed");
         }
       });
-      const retry = h("button", { type: "button", class: "act-btn act-retry", title: "重新回答" }, retryIcon(), "重新回答");
+      const retry = h("button", { type: "button", class: "act-btn act-retry", title: t("regenerate") }, retryIcon(), t("regenerate"));
       retry.addEventListener("click", onRetry);
       if (said) item.append(h("div", { class: "turn-actions" }, copy, retry));
       if (item._products?.length && !state.pendingAsk) {
@@ -941,7 +944,7 @@ function createTurn() {
           h(
             "div",
             { class: "follow-ups" },
-            FOLLOW_UPS.map((prompt, index) =>
+            t("followUps").map((prompt, index) =>
               h("button", { type: "button", class: "follow-up", style: `--i:${index}`, onclick: () => send(prompt) }, prompt)
             )
           )
@@ -953,18 +956,18 @@ function createTurn() {
       typer.flush();
       typing.remove();
       clearSkeleton();
-      activity.finish("已停止");
-      item.append(h("p", { class: "note" }, "已停止"));
+      activity.finish(t("stopped"));
+      item.append(h("p", { class: "note" }, t("stopped")));
       return typer.text().trim();
     },
     fail(message, onRetry) {
       typer.cancel();
       typing.remove();
       clearSkeleton();
-      activity.finish("沒有完成");
+      activity.finish(t("notFinished"));
       text.replaceChildren(
         h("p", { class: "error" }, message),
-        h("button", { type: "button", class: "pill", onclick: onRetry }, "重試")
+        h("button", { type: "button", class: "pill", onclick: onRetry }, t("retry"))
       );
       scrollToEnd();
     },
@@ -978,8 +981,8 @@ function createTurn() {
 function createActivity() {
   const started = performance.now();
   const seconds = () => ((performance.now() - started) / 1000).toFixed(1);
-  const timer = h("span", { class: "act-timer" }, "0.0 秒");
-  const title = h("span", { class: "act-title" }, "開始處理");
+  const timer = h("span", { class: "act-timer" }, t("seconds", "0.0"));
+  const title = h("span", { class: "act-title" }, t("starting"));
   const head = h(
     "button",
     { type: "button", class: "act-head", "aria-expanded": "true" },
@@ -1001,7 +1004,7 @@ function createActivity() {
     step.hint = node;
   };
   const clock = setInterval(() => {
-    timer.textContent = `${seconds()} 秒`;
+    timer.textContent = t("seconds", seconds());
   }, 100);
   const rotate = setInterval(() => {
     for (const step of open.values()) {
@@ -1044,14 +1047,15 @@ function createActivity() {
     phase(name) {
       if (finished) return;
       settleThinking();
-      const phase = PHASES[name] || PHASES.think;
+      const phases = t("phases");
+      const phase = phases[name] || phases.think;
       add(`phase:${count}`, phase.label, phase.hints);
     },
     toolStart(event) {
       if (finished) return;
       settleThinking();
       tools += 1;
-      add(`tool:${event.id}`, event.label || event.name, TOOL_HINTS[event.name] || []);
+      add(`tool:${event.id}`, event.label || event.name, t("toolHints")[event.name] || []);
     },
     toolDone(event) {
       done(`tool:${event.id}`, [event.summary, event.detail].filter(Boolean).join(" · "), event.ok !== false);
@@ -1063,14 +1067,14 @@ function createActivity() {
       clearInterval(clock);
       clearInterval(rotate);
       for (const key of [...open.keys()]) done(key);
-      if (!tools && label === "完成") {
+      if (!tools && label === t("done")) {
         el.remove();
         return;
       }
       el.classList.remove("live");
       head.setAttribute("aria-expanded", "false");
       title.textContent = label;
-      timer.textContent = `${count} 個步驟 · ${seconds()} 秒`;
+      timer.textContent = t("stepsSeconds", { n: count, s: seconds() });
     },
   };
 }
@@ -1091,12 +1095,12 @@ function productCard(product) {
       h("p", { class: "name", title: product.name }, product.name),
       product.price != null
         ? h("p", { class: "price" }, HackuMoney.text(product.price, product.currency))
-        : h("p", { class: "price unknown" }, "價格見商店"),
+        : h("p", { class: "price unknown" }, t("priceAtStore")),
       h("p", { class: "store" }, product.store || ""),
       h("p", { class: "rating" }, rating || ""),
-      h("p", { class: "flag" }, product.flagged ? "此頁含寫給 AI 的指令，已忽略" : "")
+      h("p", { class: "flag" }, product.flagged ? t("injected") : "")
     ),
-    h("span", { class: product.url ? "go" : "go go-empty", "aria-hidden": product.url ? null : "true" }, product.url ? (product.link_kind === "search" ? "搜尋這間店 ↗" : `前往 ${shortStore(product.store)} ↗`) : ""),
+    h("span", { class: product.url ? "go" : "go go-empty", "aria-hidden": product.url ? null : "true" }, product.url ? (product.link_kind === "search" ? t("findStore") : t("goStore", shortStore(product.store))) : ""),
   ];
   const card = product.url
     ? h("a", { class: "card", href: product.url, target: "_blank", rel: "noopener noreferrer" }, content)
@@ -1105,14 +1109,14 @@ function productCard(product) {
   const add = h("button", {
     type: "button",
     class: startQty ? "add-cart added" : "add-cart",
-    "aria-label": "加入購物車",
-    title: "加入購物車",
+    "aria-label": t("addCart"),
+    title: t("addCart"),
   }, cartIcon());
   const qtyBtn = h("button", {
     type: "button",
     class: "cart-qty",
     hidden: startQty < 1,
-    "aria-label": "更改數量",
+    "aria-label": t("changeQty"),
   }, startQty ? `x${startQty}` : "");
   const paintQty = (n) => {
     if (n < 1) {
@@ -1154,7 +1158,7 @@ function editQty(product, qtyBtn, paintQty) {
     min: "0",
     inputmode: "numeric",
     value: String(HackuCart.qtyOf(product)),
-    "aria-label": "數量",
+    "aria-label": t("qty"),
   });
   qtyBtn.replaceWith(input);
   input.focus();
@@ -1252,8 +1256,8 @@ function orderCard(order) {
     return h(
       "div",
       { class: "receipt canceled" },
-      h("p", { class: "receipt-title" }, "已取消"),
-      h("p", { class: "receipt-line" }, "這筆訂單沒有付款。")
+      h("p", { class: "receipt-title" }, t("canceledTitle")),
+      h("p", { class: "receipt-line" }, t("canceledLine"))
     );
   }
   const total = HackuMoney.text(order.total, order.currency);
@@ -1267,22 +1271,20 @@ function orderCard(order) {
     )
   );
   const message = h("p", { class: "receipt-line order-message", hidden: true });
-  const pay = h("button", { type: "button", class: "order-pay" }, `確認付款 ${total}`);
-  const cancel = h("button", { type: "button", class: "pill" }, "取消");
+  const pay = h("button", { type: "button", class: "order-pay" }, t("confirmPay", total));
+  const cancel = h("button", { type: "button", class: "pill" }, t("cancel"));
   const card = h(
     "div",
     { class: "receipt order" },
-    h("p", { class: "receipt-title" }, "確認訂單"),
+    h("p", { class: "receipt-title" }, t("confirmOrder")),
     h("ul", { class: "order-lines" }, lines),
-    h("p", { class: "order-total" }, h("span", {}, "合計"), h("span", {}, total)),
+    h("p", { class: "order-total" }, h("span", {}, t("total")), h("span", {}, total)),
     h(
       "p",
       { class: "receipt-line" },
-      `授權每筆上限 ${order.cap != null ? HackuMoney.text(order.cap, order.currency) : "—"} · ${
-        order.live ? "真實付款，會向商店下單並送到你填的地址" : "Stripe 測試模式，沒有扣真錢"
-      }`
+      `${t("capLine", order.cap != null ? HackuMoney.text(order.cap, order.currency) : "—")} · ${t(order.live ? "liveLine" : "testLine")}`
     ),
-    order.session ? h("p", { class: "receipt-line order-message" }, "付款頁已開啟。付好後會回到這裡。") : message,
+    order.session ? h("p", { class: "receipt-line order-message" }, t("payOpened")) : message,
     h("div", { class: "order-actions" }, pay, cancel)
   );
 
@@ -1293,9 +1295,9 @@ function orderCard(order) {
   };
   pay.addEventListener("click", async () => {
     pay.disabled = cancel.disabled = true;
-    pay.textContent = "檢查中…";
+    pay.textContent = t("checking");
     message.hidden = false;
-    message.textContent = "正在驗證商品，通常要 10 到 30 秒，之後會打開 Stripe 付款頁。";
+    message.textContent = t("verifying");
     let response;
     let data = {};
     try {
@@ -1310,12 +1312,12 @@ function orderCard(order) {
     }
     if (!response || response.status >= 500) {
       pay.disabled = cancel.disabled = false;
-      pay.textContent = `確認付款 ${total}`;
-      message.textContent = response ? data.error || "付款服務發生錯誤，請再按一次。" : "連不上伺服器，請再按一次。";
+      pay.textContent = t("confirmPay", total);
+      message.textContent = response ? data.error || t("payError") : t("payOffline");
       return;
     }
     if (!response.ok || !data.url) {
-      order.result = { kind: "receipt", paid: false, reason: data.error || "付款被拒絕。" };
+      order.result = { kind: "receipt", paid: false, reason: data.error || t("payRefused") };
       settle();
       return;
     }
@@ -1359,9 +1361,9 @@ function receiptCard(receipt) {
     return h(
       "div",
       { class: "receipt refused" },
-      h("p", { class: "receipt-title" }, "沒有付款"),
-      h("p", { class: "receipt-line" }, receipt.reason || "付款被拒絕。"),
-      h("a", { class: "receipt-link", href: "cart.html" }, "到購物車調整授權 ↗")
+      h("p", { class: "receipt-title" }, t("notPaid")),
+      h("p", { class: "receipt-line" }, receipt.reason || t("payRefused")),
+      h("a", { class: "receipt-link", href: "cart.html" }, t("fixMandate"))
     );
   }
   const items = (receipt.items || []).map((entry) =>
@@ -1370,12 +1372,12 @@ function receiptCard(receipt) {
   return h(
     "div",
     { class: "receipt paid" },
-    h("p", { class: "receipt-title" }, `已付款 ${HackuMoney.text(receipt.amount, receipt.currency)}`),
+    h("p", { class: "receipt-title" }, t("paid", HackuMoney.text(receipt.amount, receipt.currency))),
     h("ul", { class: "receipt-items" }, items),
-    receipt.ship_to ? h("p", { class: "receipt-line" }, `送到：${receipt.ship_to}`) : null,
-    h("p", { class: "receipt-line" }, receipt.live ? "真實付款。接著會向商店下單，下單後會有商店訂單編號。" : "Stripe 測試模式，沒有扣真錢，也不會向商店下單。"),
-    receipt.hash ? h("p", { class: "receipt-line mono" }, `紀錄 ${receipt.hash.slice(0, 12)}`) : null,
-    h("a", { class: "receipt-link", href: "orders.html" }, receipt.live ? "查看代購進度 ↗" : "到代購訂單看這筆 ↗")
+    receipt.ship_to ? h("p", { class: "receipt-line" }, t("shipTo", receipt.ship_to)) : null,
+    h("p", { class: "receipt-line" }, t(receipt.live ? "paidLive" : "paidTest")),
+    receipt.hash ? h("p", { class: "receipt-line mono" }, t("record", receipt.hash.slice(0, 12))) : null,
+    h("a", { class: "receipt-link", href: "orders.html" }, t(receipt.live ? "trackOrder" : "seeOrder"))
   );
 }
 
@@ -1407,9 +1409,9 @@ async function finishStripeReturn() {
 
 function askCard(questions) {
   const picked = questions.map(() => new Set());
-  const note = h("input", { class: "ask-note", type: "text", placeholder: "其他想法（可不填）", "aria-label": "其他想法" });
-  const submit = h("button", { type: "button", class: "ask-send", disabled: true }, "送出");
-  const skip = h("button", { type: "button", class: "pill" }, "略過");
+  const note = h("input", { class: "ask-note", type: "text", placeholder: t("otherThoughts"), "aria-label": t("otherThoughtsLabel") });
+  const submit = h("button", { type: "button", class: "ask-send", disabled: true }, t("send"));
+  const skip = h("button", { type: "button", class: "pill" }, t("skip"));
   const quick = questions.length === 1 && !questions[0].multiple;
 
   const ready = () => picked.every((set) => set.size > 0) || note.value.trim().length > 0;
@@ -1439,7 +1441,7 @@ function askCard(questions) {
     return h(
       "fieldset",
       { class: "q" },
-      h("legend", {}, question.prompt, question.multiple ? h("span", { class: "hint" }, "可多選") : null),
+      h("legend", {}, question.prompt, question.multiple ? h("span", { class: "hint" }, t("pickAny")) : null),
       h("div", { class: "opts" }, buttons)
     );
   });
@@ -1451,7 +1453,7 @@ function askCard(questions) {
       .filter((answer) => answer.chosen.length);
     const extra = note.value.trim();
     const payload = extra ? { answers, note: extra } : { answers };
-    const display = [...answers.map((answer) => answer.chosen.join("、")), extra].filter(Boolean).join(" · ");
+    const display = [...answers.map((answer) => answer.chosen.join(t("sep"))), extra].filter(Boolean).join(" · ");
     answerAsk(payload, display);
   };
 
@@ -1463,7 +1465,7 @@ function askCard(questions) {
     }
   });
   submit.addEventListener("click", submitAnswers);
-  skip.addEventListener("click", () => answerAsk({ skipped: true }, "略過"));
+  skip.addEventListener("click", () => answerAsk({ skipped: true }, t("skip")));
 
   if (quick) groups[0].querySelector(".opts").append(skip);
   const el = h(
@@ -1478,8 +1480,8 @@ function askCard(questions) {
     el.querySelectorAll("button, input").forEach((control) => {
       control.disabled = true;
     });
-    if (payload.skipped) el.append(h("p", { class: "note" }, "已略過"));
-    else if (payload.user_reply) el.append(h("p", { class: "note" }, "已改用文字回答"));
+    if (payload.skipped) el.append(h("p", { class: "note" }, t("skipped")));
+    else if (payload.user_reply) el.append(h("p", { class: "note" }, t("typedInstead")));
   };
 
   return { el, close };
@@ -1488,8 +1490,16 @@ function askCard(questions) {
 function shortStore(store) {
   const name = String(store || "").trim();
   if (name && name.length <= 10) return name;
-  const local = name.split(/\s+/).find((part) => /[\u3400-\u9fff]/.test(part) && part.length <= 8);
-  return local || "商店";
+  const parts = name.split(/\s+/);
+  const local = parts.find((part) => /[\u3400-\u9fff]/.test(part) && part.length <= 8);
+  if (local) return local;
+  if (name.length <= 14) return name;
+  let short = "";
+  for (const part of parts) {
+    if (`${short} ${part}`.trim().length > 14) break;
+    short = `${short} ${part}`.trim();
+  }
+  return short || t("store");
 }
 
 function hideBrokenImage(event) {
@@ -1586,11 +1596,16 @@ function inline(text) {
   return escapeHtml(text)
     .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
     .replace(/\[([^\]]+)\]\((https:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>')
-    .replace(/(?:HK|NT|US|S|A)\$\s?\d[\d,]*(?:\.\d+)?|(?:人民幣\s?)?[¥￥]\s?\d[\d,]*(?:\.\d+)?/g, '<b class="money">$&</b>')
-    .replace(/第\s*([一二兩三四五六七八九十]|\d{1,2})\s*(?:個|款|件|張|項)/g, (match, n) => {
-      const index = NUMERALS[n] || Number(n);
+    .replace(/(?:HK|NT|US|S|A)\$\s?\d[\d,]*(?:\.\d+)?|(?:人民幣\s?|日圓\s?|CN|JP)?[¥￥]\s?\d[\d,]*(?:\.\d+)?/g, '<b class="money">$&</b>')
+    .replace(new RegExp(`${REF_ZH.source}|${REF_EN.source}`, "gi"), (match, ...groups) => {
+      const index = refNumber(groups.slice(0, 4));
       return index ? `<span class="ref" data-n="${index}">${match}</span>` : match;
     });
+}
+
+function refNumber(groups) {
+  const found = groups.find((group) => typeof group === "string" && group);
+  return found ? NUMERALS[found.toLowerCase()] || NUMERALS[found] || Number(found) || 0 : 0;
 }
 
 function refCard(target) {
@@ -1612,10 +1627,10 @@ function numberCards(cards) {
 
 function pickIndex(markdown, products) {
   const text = markdown || "";
-  const byNumber = /(?:最推薦|推薦|首選|最適合|建議選|建議買)[^。！？\n]{0,6}?第\s*([一二兩三四五六七八九十]|\d{1,2})\s*(?:個|款|件)/.exec(text);
-  if (byNumber) return (NUMERALS[byNumber[1]] || Number(byNumber[1])) - 1;
-  const sentence = text.split(/[。！？\n]/).find((part) => /最推薦|推薦|首選|最適合|建議/.test(part));
+  const sentence = text.split(/[。！？\n]|[.!?](?=\s|$)/).find((part) => PICK_WORDS.test(part));
   if (!sentence) return -1;
+  const byNumber = new RegExp(`${REF_ZH.source}|${REF_EN.source}`, "i").exec(sentence.slice(sentence.search(PICK_WORDS)));
+  if (byNumber) return refNumber(byNumber.slice(1, 5)) - 1;
   const said = sentence.toLowerCase();
   let best = -1;
   let bestScore = 0;
@@ -1640,7 +1655,7 @@ function markPick(item, markdown) {
   const wrap = item.querySelectorAll(".cards > .card-wrap:not(.skeleton)")[index];
   if (!wrap || wrap.classList.contains("picked")) return;
   wrap.classList.add("picked");
-  wrap.append(h("span", { class: "pick-badge" }, "推薦"));
+  wrap.append(h("span", { class: "pick-badge" }, t("pickBadge")));
 }
 
 function escapeHtml(text) {

@@ -115,6 +115,41 @@ button {
   padding: 2px 4px 4px;
 }
 
+.lang-switch {
+  display: inline-flex;
+  flex: none;
+  margin-left: auto;
+  padding: 2px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: #fff;
+}
+
+.lang-switch button {
+  min-width: 34px;
+  height: 26px;
+  padding: 0 9px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  transition: background 0.2s var(--ease), color 0.2s;
+}
+
+.lang-switch button:hover {
+  color: var(--ink);
+}
+
+.lang-switch button[aria-pressed="true"] {
+  background: var(--ink);
+  color: var(--user-text);
+}
+
 .icon-btn {
   display: grid;
   place-items: center;
@@ -461,6 +496,15 @@ button {
   height: 16px;
   color: var(--muted);
   transition: color 0.15s, transform 0.2s var(--ease);
+}
+
+.lang-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 4px 2px 10px;
+  color: var(--ink);
+  font-size: 13.5px;
 }
 
 .side-links a:hover svg {
@@ -1332,6 +1376,10 @@ a.card:hover .pic img {
   font-size: 14px;
   font-weight: 600;
   text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding-inline: 8px;
 }
 
 .go-empty {
@@ -2213,6 +2261,7 @@ a.card:hover .pic img {
   }
 
   .header-actions {
+    align-items: center;
     margin-left: auto;
   }
 
@@ -2231,6 +2280,16 @@ a.card:hover .pic img {
 @media (min-width: 901px) {
   .app .chat-header {
     display: none;
+  }
+}
+
+@media (max-width: 480px) {
+  .narrow-title h1 {
+    display: none;
+  }
+
+  .header-actions {
+    flex-wrap: nowrap;
   }
 }
 

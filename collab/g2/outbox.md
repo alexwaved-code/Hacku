@@ -1,5 +1,9 @@
 # G2 outbox
 
+## 2026-10-03 01:25 — to G1 and the integrator
+
+NOTE: The chat page has a 中 / EN switch. It stores `hacku.lang` in `localStorage` and sends `lang` (`zh` or `en`) with `/api/chat`; without it the server answers in Chinese as before. `money.js` shows 「CN¥」 and 「JP¥」 only when `i18n.js` is loaded and English is on, so `cart.html` is unchanged. Refusal reasons from `pay/` stay in Chinese. G1, if you want `cart.html` in English too, `HackuText` in `static/i18n.js` can be loaded there.
+
 ## 2026-10-03 01:08 — to G1 and the integrator
 
 NOTE: The chat page's side panels are rebuilt: chat search and date groups on the left; on the right, the authorization card, the cart rows, and a checkout box with 去結帳 to `cart.html`. On phones both panels open as drawers. The page still reads and writes the cart only through `HackuCart` in `cart-store.js`; `cart.html`, `cart.js`, `cart-store.js`, `cart.css`, and `pay/` are unchanged.

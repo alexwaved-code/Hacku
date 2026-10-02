@@ -232,3 +232,21 @@ Side panels rebuilt, and the answer now points at its cards.
 - Below 900 px the panels were hidden. They are now drawers: the menu button opens the chats, and 購物車 opens the cart. Esc or a tap outside closes them.
 - Cards carry numbers 1 to 5. 「第N個」 in the answer is highlighted and lifts or scrolls to that card. Prices in the answer are bold. The card the answer recommends gets a 「推薦」 badge: by 「推薦第N個」, or else by the product name in the recommending sentence, and only when one card matches best.
 - Checked in the browser at 1024 px and 390 px: both drawers, search, delete then cancel, quantity up and remove, the total, and a live search turn where 「首選 Sony SRS-XB100」 marked card 1. 46 unit tests.
+
+## 2026-10-03 01:25
+
+中 / EN language switch on the chat page.
+
+**What shipped**
+
+- `static/i18n.js` holds every page string in Chinese and English, with `t()`. Static text in `index.html` uses `data-i18n` and `data-i18n-attr`.
+- The page sends `lang` with each chat request. `harness.run` takes `lang`; in English the prompt asks for English replies and `ask_user` questions, and tool labels, summaries, store details, and the fixed replies come in English. Tool threads carry the language through `contextvars`.
+- Switching redraws the current chat, the chat list, the cart, and the authorization card. Cards and buttons change language; earlier answers stay as written.
+- English references (「#2」, 「card 2」, 「the second one」) link to cards, and 「recommend」, 「best pick」, 「top pick」, 「go with」 mark the picked card.
+- English shows 「CN¥」 and 「JP¥」. `cart.html` loads `money.js` without `i18n.js` and keeps 「人民幣 ¥」.
+- Below 480 px the header shows only the logo, so the switch, 新對話, and 購物車 stay on one line.
+
+**Checked**
+
+48 unit tests pass, including the English labels and the Chinese default. An English turn for a Bluetooth speaker under HK$300 took 14 seconds in the page: English steps and reply, five cards, the Sony card picked, 「The first one」 linked to card 1. Switched both ways at 1024 px and 390 px.
+

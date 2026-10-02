@@ -62,7 +62,7 @@ def two_searches():
 
 
 class HarnessTest(TempData):
-    def run_turn(self, *streams):
+    def run_turn(self, *streams, lang="zh"):
         script = list(streams)
         opened = []
 
@@ -74,7 +74,7 @@ class HarnessTest(TempData):
 
         events = []
         with mock.patch.object(harness.llm, "open_stream", side_effect=open_stream), mock.patch.object(harness, "run_tool", fake_tools):
-            harness.run(CONFIG, [{"role": "user", "content": "買充電線"}], events.append)
+            harness.run(CONFIG, [{"role": "user", "content": "買充電線"}], events.append, lang=lang)
         return events, opened
 
     def tearDown(self):
@@ -127,6 +127,20 @@ class HarnessTest(TempData):
         ]
         self.assertEqual(tools._offers_detail(rows), "豐澤、The Club、領域 等 · 最低 HK$125")
         self.assertEqual(tools._offers_detail([]), "")
+
+    def test_english_page_gets_english_labels_and_prompt(self):
+        events, opened = self.run_turn(FakeStream([two_searches()]), FakeStream([]), lang="en")
+        self.assertIn("Reply in English", opened[0].body["messages"][0]["content"])
+        start = next(e for e in events if e["type"] == "tool_start" and e["name"] == "shop_search")
+        self.assertEqual(start["label"], "Checking prices for “A”")
+        self.assertEqual(events[-1]["messages"][-1]["content"], "Here is what I found.")
+        self.assertEqual(tools.LANG.get(), "zh")
+
+    def test_chinese_is_the_default(self):
+        events, opened = self.run_turn(FakeStream([two_searches()]), FakeStream([]))
+        self.assertNotIn("Reply in English", opened[0].body["messages"][0]["content"])
+        start = next(e for e in events if e["type"] == "tool_start" and e["name"] == "shop_search")
+        self.assertEqual(start["label"], "查價「A」")
 
     def test_empty_answer_after_cards_still_says_something(self):
         events, opened = self.run_turn(FakeStream([two_searches()]), FakeStream([]))

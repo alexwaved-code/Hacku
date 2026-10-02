@@ -23,7 +23,7 @@ With a test key, no real money moves, and the store does not get an order. With 
 | `agent/` | G2 | Research agent: tool loop (`harness.py`), tools (`tools.py`), Serper and page reading (`web.py`). |
 | `pay/` | G1 | Spending mandate, verifier, Stripe Checkout, order status and refunds (`checkout.py`), SQLite store and hash chain. |
 | `shop/` | G2 | Fills a store's cart in a real Chrome window (`browser.py`) and stops before payment. |
-| `static/index.html`, `app.js`, `money.js`, `styles.css`, `logo.svg` | G2 | Chat page. |
+| `static/index.html`, `app.js`, `i18n.js`, `money.js`, `styles.css`, `logo.svg` | G2 | Chat page. `i18n.js` holds the 中 and English text. |
 | `static/cart.html`, `cart.js`, `cart-store.js`, `cart.css` | G1 | Cart page. |
 | `static/orders.html`, `orders.js`, `orders.css` | G2 | Order desk: paid orders, delivery address, cart filling, placed, refund. |
 | `tests/` | both | `python3 -m unittest discover -s tests` from `web/`. |
@@ -89,11 +89,12 @@ Search results are cached in `data/cache.db` for 6 hours and page reads for 2 ho
 - Right panel: the payment authorization (caps and days left), the cart with pictures, a quantity stepper (at 1 the minus becomes remove), and a checkout box with the item count, the total, and 去結帳.
 - Below 900 px both panels become drawers: the menu button opens the chats, and the 購物車 button opens the cart.
 - Esc stops a running turn or closes a drawer. `/` focuses the input. A down-arrow button appears when you scroll up, and jumps back to the latest message.
+- 中 / EN switches the page language: in the header on phones, and at the bottom of the left panel on wide screens. The choice is kept in `localStorage` (`hacku.lang`) and sent with each chat request, so step labels, summaries, the fixed replies, and the model's answer follow it. Cards already on screen are redrawn in the new language; earlier answers stay as written. In English, 「#2」, 「card 2」, and 「the second one」 point at cards like 「第二個」. `cart.html` and `orders.html` stay in Chinese.
 - Static files are sent with `Cache-Control: no-cache`, so a reload always picks up a new `app.js` or `styles.css`.
 
 ## Chat route
 
-`POST /api/chat` with `{ "messages": [...] }`. The page sends the whole thread back each turn, including the tool messages it received. The response is SSE, one JSON object per `data:` line:
+`POST /api/chat` with `{ "messages": [...], "lang": "zh" | "en" }`. `lang` defaults to `zh`; with `en`, the prompt asks for English replies and questions, and tool labels and summaries are in English. The page sends the whole thread back each turn, including the tool messages it received. The response is SSE, one JSON object per `data:` line:
 
 | `type` | Fields | Meaning |
 |---|---|---|

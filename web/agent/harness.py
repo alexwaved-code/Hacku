@@ -1,3 +1,4 @@
+import contextvars
 import http.client
 import json
 import time
@@ -7,7 +8,7 @@ from datetime import datetime, timedelta, timezone
 import llm
 from llm import Busy, UpstreamError
 
-from .tools import ASK_TOOL, BUY_TOOL, CARD_TOOL, TOOL_SCHEMAS, clean_questions, has_refs, pick_cards, refresh_cards, run_tool, tool_label
+from .tools import ASK_TOOL, BUY_TOOL, CARD_TOOL, LANG, TOOL_SCHEMAS, clean_questions, has_refs, pick_cards, refresh_cards, run_tool, say, tool_label
 
 MAX_ROUNDS = 7
 MAX_PARALLEL = 4
@@ -15,6 +16,16 @@ MAX_TOKENS = 350
 FALLBACK_TEXT = "我這次沒整理出答案，換個說法再問一次？"
 CARDS_TEXT = "上面是找到的商品。"
 BUSY_TEXT = "模型服務暫時忙碌，請稍後再試一次。"
+ENGLISH_TEXT = {
+    FALLBACK_TEXT: "I could not put an answer together this time. Could you ask another way?",
+    CARDS_TEXT: "Here is what I found.",
+    BUSY_TEXT: "The model service is busy. Please try again in a moment.",
+}
+ENGLISH_PAGE = (
+    "\n- The shopper set the page to English. Reply in English, and write ask_user questions and options in English. "
+    "Keep product and store names as the store wrote them. The first card is \"the first one\" or \"#1\"."
+)
+LANGS = ("zh", "en")
 OLD_TOOL_CHARS = 1200
 ASK_SCHEMAS = [schema for schema in TOOL_SCHEMAS if schema["function"]["name"] == ASK_TOOL]
 
@@ -71,10 +82,22 @@ class Stalled(Exception):
 
 def system_prompt():
     now = datetime.now(timezone(timedelta(hours=8))).strftime("%Y-%m-%d %H:%M")
-    return SYSTEM_PROMPT_TEMPLATE.format(now=now)
+    return SYSTEM_PROMPT_TEMPLATE.format(now=now) + (ENGLISH_PAGE if LANG.get() == "en" else "")
 
 
-def run(config, history, emit):
+def text_for(zh):
+    return say(zh, ENGLISH_TEXT.get(zh, zh))
+
+
+def run(config, history, emit, lang="zh"):
+    token = LANG.set(lang if lang in LANGS else "zh")
+    try:
+        _run(config, history, emit)
+    finally:
+        LANG.reset(token)
+
+
+def _run(config, history, emit):
     messages = [{"role": "system", "content": system_prompt()}, *shorten_old_tools(answer_open_calls(history))]
     added = []
     cards_shown = False
@@ -92,7 +115,7 @@ def run(config, history, emit):
 
         if not calls:
             if not text.strip():
-                text = CARDS_TEXT if cards_shown else FALLBACK_TEXT
+                text = text_for(CARDS_TEXT if cards_shown else FALLBACK_TEXT)
                 emit({"type": "delta", "text": text})
             added.append({"role": "assistant", "content": text})
             _done(emit, added, pending)
@@ -224,10 +247,10 @@ def _round(config, messages, emit, tool_choice, tools):
             return _stream_round(config, messages, emit, tool_choice, tools)
         except Stalled as error:
             if attempt:
-                raise UpstreamError("模型沒有回應，請再試一次。") from error
+                raise UpstreamError(say("模型沒有回應，請再試一次。", "The model did not answer. Please try again.")) from error
         except Busy as error:
             if attempt:
-                raise UpstreamError(BUSY_TEXT) from error
+                raise UpstreamError(text_for(BUSY_TEXT)) from error
             emit({"type": "retract"})
             time.sleep(1.5)
 
@@ -241,7 +264,7 @@ def _run_calls(calls, emit):
         for call in calls:
             args = _parse_args(call["arguments"])
             emit({"type": "tool_start", "id": call["id"], "name": call["name"], "label": tool_label(call["name"], args)})
-            futures[pool.submit(run_tool, call["name"], args)] = call
+            futures[pool.submit(contextvars.copy_context().run, run_tool, call["name"], args)] = call
         for future in as_completed(futures):
             call = futures[future]
             result = future.result()
@@ -289,7 +312,7 @@ def _stream_round(config, messages, emit, tool_choice, tools):
                 message = llm.error_text(chunk)
                 if llm.BUSY.search(message):
                     raise Busy(message)
-                raise UpstreamError(message or "模型回傳錯誤。")
+                raise UpstreamError(message or say("模型回傳錯誤。", "The model returned an error."))
             choices = chunk.get("choices") or []
             if not choices:
                 continue
@@ -314,7 +337,7 @@ def _stream_round(config, messages, emit, tool_choice, tools):
             return "".join(text), []
         if not text and not calls:
             raise Stalled() from error
-        raise UpstreamError("模型回覆中斷，請再試一次。") from error
+        raise UpstreamError(say("模型回覆中斷，請再試一次。", "The answer was cut off. Please try again.")) from error
     finally:
         response.close()
 

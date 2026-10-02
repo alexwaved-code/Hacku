@@ -120,7 +120,7 @@ class Handler(SimpleHTTPRequestHandler):
                 raise harness.Aborted() from error
 
         try:
-            harness.run(config.CHAT, messages, emit)
+            harness.run(config.CHAT, messages, emit, lang="en" if payload.get("lang") == "en" else "zh")
         except harness.Aborted:
             return
         except llm.UpstreamError as error:

@@ -1,3 +1,4 @@
+import contextvars
 import re
 import threading
 import time
@@ -35,6 +36,8 @@ SAFE_URL = re.compile(r"^https://[^\s\"'<>]+$")
 PROMO_WORDS = {"mastercard", "visa", "unionpay", "hsbc", "amex", "aeon", "sale", "hk", "hkd"}
 PRODUCT_PATH = re.compile(r"/(?:products?|p|item|goods|dp)/", re.IGNORECASE)
 NOT_PRODUCT_PATH = re.compile(r"/(?:collections?|categor(?:y|ies)|promotions?|search|brands?|tag|list|topic)s?(?:/|$)|promotion", re.IGNORECASE)
+LANG = contextvars.ContextVar("lang", default="zh")
+REGION_NAMES_EN = {"hk": "Hong Kong", "tw": "Taiwan", "cn": "China", "jp": "Japan", "kr": "Korea", "sg": "Singapore", "us": "the US", "uk": "the UK", "au": "Australia"}
 REGION_NAMES = {"hk": "香港", "tw": "台灣", "cn": "中國", "jp": "日本", "kr": "韓國", "sg": "新加坡", "us": "美國", "uk": "英國", "au": "澳洲"}
 STORE_PAGES = 5
 STORE_DEADLINE = 15
@@ -215,20 +218,29 @@ def tool_label(name, args):
         store = str(args.get("store") or "").strip()
         region = args.get("region") if args.get("region") in REGION_NAMES else None
         price = web._to_number(args.get("max_price"))
+        cap = _price_text(price, web.region_currency(region or "hk")) if price else ""
+        if LANG.get() == "en":
+            where = f" at {_store_site(store)[1]}" if store else (f" in {REGION_NAMES_EN[region]}" if region and region != "hk" else "")
+            return f"Checking prices for “{query}”{where}" + (f", under {cap}" if cap else "")
         where = f"在{_store_site(store)[1]}" if store else (REGION_NAMES[region] if region and region != "hk" else "")
-        budget = f"，{_price_text(price, web.region_currency(region or 'hk'))} 以內" if price else ""
-        return f"{where}查價「{query}」{budget}"
+        return f"{where}查價「{query}」" + (f"，{cap} 以內" if cap else "")
     if name == "web_search":
-        return f"搜尋「{str(args.get('query') or '').strip()}」"
+        query = str(args.get("query") or "").strip()
+        return say(f"搜尋「{query}」", f"Searching “{query}”")
     if name == "open_page":
-        return f"讀取 {web._site(str(args.get('url') or '')) or '網頁'}"
+        site = web._site(str(args.get("url") or ""))
+        return say(f"讀取 {site or '網頁'}", f"Reading {site or 'the page'}")
     if name == "show_products":
-        return "挑出最合適的商品"
+        return say("挑出最合適的商品", "Picking the best matches")
     if name == ASK_TOOL:
-        return "想先問你幾個問題"
+        return say("想先問你幾個問題", "A few quick questions")
     if name == BUY_TOOL:
-        return "準備訂單"
+        return say("準備訂單", "Preparing the order")
     return name
+
+
+def say(zh, en):
+    return en if LANG.get() == "en" else zh
 
 
 def clean_questions(args):
@@ -274,8 +286,8 @@ def run_tool(name, args):
     except web.FetchError as error:
         return _fail(str(error), _short_error(str(error)))
     except Exception as error:
-        return _fail(f"The tool failed: {type(error).__name__}", "失敗")
-    return _fail(f"Unknown tool: {name}", "沒有這個工具")
+        return _fail(f"The tool failed: {type(error).__name__}", say("失敗", "Failed"))
+    return _fail(f"Unknown tool: {name}", say("沒有這個工具", "Unknown tool"))
 
 
 def shop_search(query, max_price=None, region=None, store=""):
@@ -322,7 +334,7 @@ def shop_search(query, max_price=None, region=None, store=""):
         model["note"] = "No offers matched. Try other words, another store spelling, or a higher budget."
     return {
         "ok": True,
-        "summary": f"{len(rows)} 個報價" if rows else "沒有符合的報價",
+        "summary": say(f"{len(rows)} 個報價", f"{len(rows)} offers") if rows else say("沒有符合的報價", "No matching offers"),
         "detail": _offers_detail(rows),
         "model": model,
         "ui": None,
@@ -338,9 +350,10 @@ def _offers_detail(rows):
             stores.append(store)
     priced = [row for row in rows if row.get("price") is not None]
     low = min(priced, key=lambda row: row["price"]) if priced else None
-    parts = ["、".join(stores[:3]) + (" 等" if len(stores) > 3 else "")] if stores else []
+    joined = say("、", ", ").join(stores[:3]) + (say(" 等", " and more") if len(stores) > 3 else "")
+    parts = [joined] if stores else []
     if low:
-        parts.append(f"最低 {money.text(low['price'], low['currency'])}")
+        parts.append(say("最低 ", "from ") + money.text(low["price"], low["currency"]))
     return " · ".join(parts)
 
 
@@ -357,14 +370,14 @@ def show_products(refs):
             elif item not in items:
                 items.append(item)
     if not items:
-        return _fail("Those refs are unknown or expired. Run shop_search again.", "找不到商品")
+        return _fail("Those refs are unknown or expired. Run shop_search again.", say("找不到商品", "Product not found"))
     wait([_link_future(item) for item in items], timeout=LINK_WAIT)
     model = {"shown": [{"ref": _ref_of(i), "name": i["name"], "store": i["store"], "price": i["price"], "currency": i.get("currency")} for i in items]}
     if missing:
         model["missing"] = missing
     return {
         "ok": True,
-        "summary": f"{len(items)} 件",
+        "summary": say(f"{len(items)} 件", f"{len(items)} picked"),
         "model": model,
         "ui": {"kind": "products", "items": [_card(item) for item in items]},
     }
@@ -385,7 +398,7 @@ def web_search(query, region=None):
     results = web.search(query, region=region if region in REGION_NAMES else "hk")
     return {
         "ok": True,
-        "summary": f"{len(results)} 筆結果" if results else "沒有結果",
+        "summary": say(f"{len(results)} 筆結果", f"{len(results)} results") if results else say("沒有結果", "No results"),
         "model": {"query": query, "results": results},
         "ui": None,
     }
@@ -414,22 +427,22 @@ def open_page(url):
         model["note"] = "No single product price was found on this page. Do not quote a price from it."
     if flagged:
         model["page_flag"] = INJECTION_NOTE
-    summary = _price_text(page["price"], page["currency"]) if page["is_product"] else "已讀取"
+    summary = _price_text(page["price"], page["currency"]) if page["is_product"] else say("已讀取", "Read")
     return {"ok": True, "summary": summary, "model": model, "ui": None}
 
 
 def buy(entries):
     if _quoter is None:
-        return _fail("Payments are not connected on this server.", "付款未連線")
+        return _fail("Payments are not connected on this server.", say("付款未連線", "Payments offline"))
     if not isinstance(entries, list) or not entries:
-        return _fail("items must list at least one ref.", "沒有商品")
+        return _fail("items must list at least one ref.", say("沒有商品", "No items"))
     chosen = []
     with _lock:
         for entry in entries[:MAX_BUY]:
             entry = entry if isinstance(entry, dict) else {"ref": entry}
             item = _cache.get(str(entry.get("ref")))
             if item is None:
-                return _fail("That ref is unknown or expired. Search again and show the products first.", "找不到商品")
+                return _fail("That ref is unknown or expired. Search again and show the products first.", say("找不到商品", "Product not found"))
             qty = entry.get("qty", 1)
             qty = int(qty) if isinstance(qty, (int, float, str)) and str(qty).strip().isdigit() else 1
             chosen.append((dict(item), qty))
@@ -439,21 +452,28 @@ def buy(entries):
         payload.append({**{field: card[field] for field in cards.FIELDS}, "id": card["url"] or card["name"], "qty": qty, "sig": card["sig"]})
     result = _quoter(payload)
     if not result.get("ok"):
-        reason = str(result.get("reason") or "這筆訂單不能建立。")
+        reason = str(result.get("reason") or say("這筆訂單不能建立。", "This order cannot be created."))
+        about_mandate = "授權" in reason or "mandate" in reason.lower()
         return {
             "ok": True,
-            "summary": "不能下單",
-            "reply": f"沒有建立訂單。{reason}" + (" 可以到購物車頁面修改付款授權。" if "授權" in reason else ""),
+            "summary": say("不能下單", "Not ordered"),
+            "reply": say(
+                f"沒有建立訂單。{reason}" + (" 可以到購物車頁面修改付款授權。" if about_mandate else ""),
+                f"No order was created. {reason}" + (" You can change the payment authorization on the cart page." if about_mandate else ""),
+            ),
             "model": {"paid": False, "reason": reason},
             "ui": {"kind": "receipt", "paid": False, "reason": reason},
         }
     order = {key: result.get(key) for key in ("total", "currency", "cap", "live")}
     total = money.text(result["total"], result["currency"])
-    lines = "、".join(f"{line['name']} × {line['qty']}" for line in result["items"])
+    lines = say("、", ", ").join(f"{line['name']} × {line['qty']}" for line in result["items"])
     return {
         "ok": True,
-        "summary": f"待確認 {total}",
-        "reply": f"訂單已準備好：{lines}，共 {total}。請核對後按「確認付款」，在 Stripe 頁面一起填卡和香港送貨地址。",
+        "summary": say(f"待確認 {total}", f"To confirm: {total}"),
+        "reply": say(
+            f"訂單已準備好：{lines}，共 {total}。請核對後按「確認付款」，在 Stripe 頁面一起填卡和香港送貨地址。",
+            f"Your order is ready: {lines}, {total} in total. Check it and press “Confirm and pay”; on the Stripe page you enter the card and the Hong Kong delivery address.",
+        ),
         "model": {
             "paid": False,
             "awaiting_shopper": True,
@@ -698,21 +718,21 @@ def _card(item):
 
 
 def _price_text(price, currency):
-    return money.text(price, currency) or "已讀取"
+    return money.text(price, currency) or say("已讀取", "Read")
 
 
 def _short_error(message):
     if "not set up" in message or "key was refused" in message:
-        return "搜尋未設定"
+        return say("搜尋未設定", "Search not set up")
     if "rate limited" in message:
-        return "搜尋太頻繁"
+        return say("搜尋太頻繁", "Too many searches")
     if "answered 403" in message or "answered 429" in message:
-        return "網站拒絕讀取"
+        return say("網站拒絕讀取", "Site refused")
     if "answered" in message:
-        return "網站回應錯誤"
+        return say("網站回應錯誤", "Site error")
     if "Private" in message or "Only http" in message:
-        return "不允許的連結"
-    return "讀取失敗"
+        return say("不允許的連結", "Link not allowed")
+    return say("讀取失敗", "Could not read")
 
 
 def _safe_url(value):
