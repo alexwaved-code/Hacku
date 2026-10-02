@@ -43,7 +43,7 @@ Model requests use `Authorization: Bearer <key>`, `stream: true`, `max_tokens: 4
 | Tool | What it does |
 |---|---|
 | `shop_search` | Google Shopping, Hong Kong (`gl=hk`). Real offers: name, store, HKD price, rating, picture. Each offer gets a `ref`. |
-| `show_products` | Shows up to 3 refs as cards. Card data comes from the cached search result, so the model cannot change a price or link. |
+| `show_products` | Shows up to 3 refs as cards. Card data comes from the cached search result, so the model cannot change a price or link. Google Shopping links are replaced by the store's own product page when a search finds one on the store's domain with the same model number; otherwise the card links to a Google search for that product and store. After any tool returns refs, the next round is forced to call `show_products`. |
 | `web_search` | Google search, Hong Kong. Titles, links, snippets. |
 | `open_page` | Reads one https page now: JSON-LD product, price, picture, page text. Private and local addresses are refused. A store product page returns a `ref`. |
 

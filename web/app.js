@@ -259,11 +259,16 @@ function productCard(product, best) {
       h("p", { class: "store" }, product.store, rating),
       product.flagged ? h("p", { class: "flag" }, "此頁含寫給 AI 的指令，已忽略") : null
     ),
-    product.url ? h("span", { class: "go" }, "查看商店 ↗") : null,
+    product.url ? h("span", { class: "go" }, product.link_kind === "search" ? "搜尋這間店 ↗" : `前往 ${shortStore(product.store)} ↗`) : null,
   ];
   return product.url
     ? h("a", { class: "card", href: product.url, target: "_blank", rel: "noopener noreferrer" }, content)
     : h("div", { class: "card" }, content);
+}
+
+function shortStore(store) {
+  const name = String(store || "商店").split(/\s+/)[0];
+  return name.length > 12 ? "商店" : name;
 }
 
 function hideBrokenImage(event) {

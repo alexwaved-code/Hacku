@@ -5,7 +5,7 @@ import urllib.request
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta, timezone
 
-from .tools import TOOL_SCHEMAS, run_tool, tool_label
+from .tools import CARD_TOOL, TOOL_SCHEMAS, has_refs, run_tool, tool_label
 
 MAX_ROUNDS = 7
 MAX_PARALLEL = 4
@@ -59,14 +59,21 @@ def system_prompt():
 def run(config, history, emit):
     messages = [{"role": "system", "content": system_prompt()}, *history]
     added = []
+    cards_waiting = False
 
     for round_no in range(MAX_ROUNDS):
         allow_tools = round_no < MAX_ROUNDS - 1
+        if not allow_tools:
+            tool_choice = "none"
+        elif cards_waiting:
+            tool_choice = {"type": "function", "function": {"name": CARD_TOOL}}
+        else:
+            tool_choice = "auto"
         try:
-            text, calls = _stream_round(config, messages, emit, allow_tools=allow_tools)
+            text, calls = _stream_round(config, messages, emit, tool_choice)
         except Stalled:
             try:
-                text, calls = _stream_round(config, messages, emit, allow_tools=allow_tools)
+                text, calls = _stream_round(config, messages, emit, tool_choice)
             except Stalled as error:
                 raise UpstreamError("模型沒有回應，請再試一次。") from error
         calls = [call for call in calls if call["name"]] if allow_tools else []
@@ -129,21 +136,24 @@ def run(config, history, emit):
             }
             messages.append(reply)
             added.append(reply)
+            if call["name"] == CARD_TOOL and results[call["id"]]["ok"]:
+                cards_waiting = False
+            elif has_refs(results[call["id"]]["model"]):
+                cards_waiting = True
 
     emit({"type": "done", "messages": added})
 
 
-def _stream_round(config, messages, emit, allow_tools):
+def _stream_round(config, messages, emit, tool_choice):
     body = {
         "model": config["model"],
         "messages": messages,
         "tools": TOOL_SCHEMAS,
         "stream": True,
-        "max_tokens": 400,
+        "max_tokens": 250,
         "thinking": {"type": "disabled"},
+        "tool_choice": tool_choice,
     }
-    if not allow_tools:
-        body["tool_choice"] = "none"
 
     response = _open(config, body)
     text = []

@@ -18,4 +18,8 @@ Checked on 2026-10-02: "HK$500 以內，通勤用的降噪耳機" returned Anker
 
 Keyless search (DuckDuckGo, Bing, Yahoo, Startpage, Mojeek) blocked the server or returned unrelated results, so search needs `SERPER_API_KEY`.
 
+Google Shopping `link` values open an empty Google redirect page outside Google. Cards now link to the store's product page (same store domain, same model number, not a category or promotion page) or, when none is found, to a Google search for the product and store. In a check of 9 cards, 7 linked straight to the store.
+
+The model sometimes skipped `show_products` and wrote a table instead. After any tool returns refs, the next round now forces `show_products`, and replies are capped at 250 tokens.
+
 The gateway sometimes stalls a stream. Reads time out after 25 s. A round with no output yet is retried once. A reply that stalls after some text keeps that text.
