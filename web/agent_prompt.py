@@ -1,6 +1,6 @@
 """The model only phrases a decision the loop already made."""
 
-EXPLAIN_PROMPT = """You write one sentence for the shopper. The ReAct loop already decided. Do not change the decision, the rule, the amounts, the rail, or any rate. If a reward is missing, say it is unknown. Never invent a fee, a cashback rate, or a point value. Reply with that one sentence only."""
+EXPLAIN_PROMPT = """Write one English sentence for the shopper. The shield already decided. Do not change the level, the amounts, the rail, or any rate. Do not use another language. Do not add a list or a heading. If a reward is missing, say it is unknown. Never invent a fee or a cashback rate."""
 
 
 def explain_messages(turn):

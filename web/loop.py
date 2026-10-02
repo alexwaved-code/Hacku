@@ -12,7 +12,8 @@ import uuid
 from datetime import datetime, timedelta, timezone
 
 from catalog import filter_products
-from verifier import accepted_total, verify_products
+from shield import MANDATE, judge, parse_payee, parse_qty, seal
+from verifier import verify_products
 
 TZ = timezone(timedelta(hours=8))
 EXPIRES = datetime(2026, 10, 7, 23, 59, 59, tzinfo=TZ)
@@ -45,6 +46,8 @@ class Session:
         self.revoked = False
         self.settlements = []
         self.drafts = {}
+        self.chain = []
+        self.cooling_until = None
 
 
 SESSION = Session()
@@ -70,8 +73,21 @@ def issue_consent(now=None):
             "id": "did:example:hacku-customer",
             "agent": "did:example:hacku-shopping-agent",
             "rules": [
-                {"id": "GROC_WEEK", "category": "groceries", "capUsd": 200, "window": "rolling_7d"},
-                {"id": "ENT_TX", "category": "entertainment", "capUsd": 50, "window": "per_transaction"},
+                {
+                    "id": "GROC_WEEK",
+                    "category": "groceries",
+                    "capUsd": 200,
+                    "window": "rolling_7d",
+                    "merchants": MANDATE["scenes"]["groceries"]["merchants"],
+                },
+                {
+                    "id": "ENT_TX",
+                    "category": "entertainment",
+                    "capUsd": 50,
+                    "window": "per_transaction",
+                    "maxQty": 2,
+                    "merchants": MANDATE["scenes"]["entertainment"]["merchants"],
+                },
             ],
         },
     }
@@ -112,7 +128,7 @@ def consent_view(now=None, session=None):
         "subject": "did:example:hacku-customer",
         "agent": "did:example:hacku-shopping-agent",
         "expires": EXPIRES.isoformat(timespec="seconds"),
-        "demo": "Local did:example credential. Settlement checks the signature, the cap, and the expiry.",
+        "demo": "Local did:example credential. The shield checks the signature, the mandate, and the hash log.",
     }
 
 
@@ -140,6 +156,8 @@ def parse_purchase(text):
     amount_match = re.search(r"(?:for|of)\s+\$?\s*(\d+(?:\.\d+)?)", lowered)
     if not amount_match:
         amount_match = re.search(r"\$\s*(\d+(?:\.\d+)?)", lowered)
+    if not amount_match:
+        amount_match = re.search(r"(\d+(?:\.\d+)?)\s*usd", lowered)
     amount = float(amount_match.group(1)) if amount_match else None
     return {
         "intent": "purchase",
@@ -201,6 +219,18 @@ def run_turn(text, now=None, session=None, verify=None):
     session = session or SESSION
     verify = verify or verify_products
     now = now_hk(now)
+    if session.cooling_until and now < session.cooling_until:
+        return stop_turn(
+            "refuse",
+            "COOLING",
+            "A blocked payment is still in its cooling period.",
+            "The shield will not take another payment yet.",
+            "No rail is compared.",
+            "Nothing is charged.",
+            "Cooling period is still open. End it before trying again.",
+            "red",
+        )
+
     parsed = parse_purchase(text)
     if parsed["intent"] == "revoke":
         revoke(session)
@@ -269,79 +299,155 @@ def run_turn(text, now=None, session=None, verify=None):
         room = round(rule["cap"] - spent, 2)
         if total > room:
             act = f"{money(total)} USD would pass the {money(rule['cap'])} USD weekly grocery cap. {money(spent)} USD is already settled in this window."
-            return stop_turn("refuse", rule["id"], reason, act, "No card is chosen.", "Settlement did not run.", act)
+            return stop_turn("refuse", rule["id"], reason, act, "No card is chosen.", "Settlement did not run.", act, "red")
         act = f"GROC_WEEK allows it. This {money(total)} USD sits inside the {money(rule['cap'])} USD rolling week ({money(spent)} USD already settled)."
     else:
         if total > rule["cap"]:
             act = f"{money(total)} USD is over the {money(rule['cap'])} USD entertainment cap."
-            return stop_turn("refuse", rule["id"], reason, act, "No card is chosen.", "Settlement did not run.", act)
+            return stop_turn("refuse", rule["id"], reason, act, "No card is chosen.", "Settlement did not run.", act, "red")
         act = f"ENT_TX allows it. {money(total)} USD is within the {money(rule['cap'])} USD per-transaction cap."
 
     room = round(rule["cap"] - grocery_spent(session, now), 2) if parsed["category"] == "groceries" else rule["cap"]
-    shortlist = filter_products(parsed["category"], parsed["amount"], round(room - sum(known_fees), 2))
+    product_room = round(room - sum(known_fees), 2)
+    shortlist = filter_products(parsed["category"], parsed["amount"], product_room)
     verified = verify(shortlist)
-    kept = [item for item in verified if item["rating"] == 3]
-    verify_text = verification_text(verified)
-    if not kept:
+    rejected = [item for item in verified if item["rating"] == 1]
+    kept = [item for item in verified if item["rating"] != 1]
+    if not shortlist:
+        return stop_turn(
+            "refuse",
+            "CATALOG",
+            reason,
+            "No listing fits this amount inside the mandate.",
+            "No rail is compared.",
+            "Nothing is charged.",
+            "Nothing in the mandate fits this amount.",
+            "red",
+        )
+    basket = [item for item in kept if item["rating"] in (2, 3, None)]
+    if not basket:
+        seal(session, "shield", {"level": "red", "reason": "every listing was rejected"})
+        session.cooling_until = now + timedelta(minutes=10)
         return {
-            "decision": "reconsider",
-            "rule": "VERIFY",
+            "decision": "refuse",
+            "rule": "INTENT",
             "canSettle": False,
             "draftId": None,
-            "note": verify_text,
-            "steps": [
-                {"phase": "reason", "title": "Reason", "text": reason, "status": "pass"},
-                {"phase": "act", "title": "Act", "text": act, "status": "pass"},
-                {"phase": "verify", "title": "Verify", "text": verify_text, "products": verified, "status": "stop"},
-                {"phase": "negotiate", "title": "Negotiate", "text": "No rail is compared because no listing rated 3.", "rails": [], "status": "stop"},
-                {"phase": "execute", "title": "Execute", "text": "Nothing is charged.", "status": "stop"},
-            ],
+            "disposition": "red",
+            "cooling": True,
+            "note": "Every listing was rejected. The payment is blocked.",
+            "hash": session.chain[-1]["hash"],
+            "steps": shield_steps(reason, act, verified, "Every listing rated 1, so the intent gate blocks payment.", "No merchant is paid.", "Nothing is charged.", "stop"),
         }
 
-    total = round(accepted_total(verified) + sum(known_fees), 2)
-    rails = rank_rails(parsed["category"], total)
-    winner = next(rail for rail in rails if rail["recommended"])
-    other = next(rail for rail in rails if not rail["recommended"])
-    if winner["reward"] is None:
-        spread = "Neither rail has a known reward on the fixture, so none is recommended."
+    goods = round(sum(item["price"] for item in basket), 2)
+    total = round(goods + sum(known_fees), 2)
+    payee = parse_payee(text, parsed["category"])
+    qty = parse_qty(text, parsed["category"])
+    model_down = any(item["rating"] is None for item in basket)
+    verdict = judge(
+        parsed["category"],
+        total,
+        qty,
+        payee,
+        [item["rating"] for item in basket],
+        model_down,
+        room,
+    )
+    if rejected and verdict["level"] == "green":
+        verdict["level"] = "yellow"
+        verdict["intent"] = "Rejected listings were removed. Confirm the remaining basket."
+    entry = seal(session, "shield", {"level": verdict["level"], "score": verdict["score"], "payee": payee, "total": total})
+    rails = []
+    spread = "No rail is compared."
+    if verdict["level"] == "red":
+        session.cooling_until = now + timedelta(minutes=10)
+        execute = "Blocked. A 10-minute cooling period has started. Nothing is charged."
+        status = "stop"
+        can_settle = False
+        draft_id = None
+        decision = "refuse"
     else:
+        rails = rank_rails(parsed["category"], total)
+        winner = next(rail for rail in rails if rail["recommended"])
+        other = next(rail for rail in rails if not rail["recommended"])
         spread = (
             f"{winner['name']} returns {money(winner['reward'])} USD ({winner['rateLabel']}, {winner['source']}). "
             f"{other['name']} is not chosen because its {other['rateLabel']}."
+            if winner["reward"] is not None
+            else "Neither rail has a known reward on the fixture, so none is recommended."
         )
-    draft_id = uuid.uuid4().hex
-    session.drafts[draft_id] = {
-        "id": draft_id,
-        "category": parsed["category"],
-        "total": total,
-        "rail": winner["id"],
-        "rule": rule["id"],
-        "reward": winner["reward"],
-    }
-    kept_names = ", ".join(item["name"] for item in kept)
-    note = f"Kept {kept_names} after verification. {spread} Authorize to settle. Nothing is charged until you do."
+        if verdict["level"] == "green":
+            record_settlement(session, parsed["category"], total, winner["id"], now)
+            receipt = seal(session, "receipt", {"total": total, "rail": winner["id"], "payee": payee})
+            execute = f"Cleared. Settled {money(total)} USD on {winner['name']} at {payee}. Record {receipt['hash'][:12]}."
+            status = "pass"
+            can_settle = False
+            draft_id = None
+            decision = "allow"
+            entry = receipt
+        else:
+            draft_id = uuid.uuid4().hex
+            session.drafts[draft_id] = {
+                "id": draft_id,
+                "category": parsed["category"],
+                "total": total,
+                "rail": winner["id"],
+                "rule": rule["id"],
+                "reward": winner["reward"],
+                "payee": payee,
+                "disposition": "yellow",
+            }
+            execute = "Yellow: confirm this payment yourself. Nothing is charged until you do."
+            status = "hold"
+            can_settle = True
+            decision = "allow"
+    note = f"{verdict['level'].capitalize()}. {verdict['rule']} {verdict['intent']} {spread}"
     return {
-        "decision": "allow",
-        "rule": rule["id"],
-        "canSettle": True,
+        "decision": decision,
+        "rule": rule["id"] if verdict["level"] != "red" else "SHIELD",
+        "canSettle": can_settle,
         "draftId": draft_id,
+        "disposition": verdict["level"],
+        "cooling": verdict["level"] == "red",
         "note": note,
+        "hash": entry["hash"],
         "steps": [
             {"phase": "reason", "title": "Reason", "text": reason, "status": "pass"},
-            {"phase": "act", "title": "Act", "text": act, "status": "pass"},
-            {"phase": "verify", "title": "Verify", "text": verify_text, "products": verified, "status": "pass"},
-            {"phase": "negotiate", "title": "Negotiate", "text": spread, "rails": rails, "status": "pass"},
-            {
-                "phase": "execute",
-                "title": "Execute",
-                "text": "Waiting for your authorization. Settlement checks the consent credential again.",
-                "status": "hold",
-            },
+            {"phase": "act", "title": "Rule", "text": verdict["rule"], "status": "stop" if verdict["veto"] else "pass"},
+            {"phase": "verify", "title": "Intent", "text": verdict["intent"], "products": verified, "status": status},
+            {"phase": "intel", "title": "Intel", "text": verdict["intel"], "status": "stop" if verdict["level"] == "red" else "pass"},
+            {"phase": "negotiate", "title": "Channel", "text": spread, "rails": rails, "status": status},
+            {"phase": "execute", "title": verdict["level"].capitalize(), "text": execute, "status": status},
         ],
     }
 
 
-def stop_turn(decision, rule, reason, act, negotiate, execute, note):
+def shield_steps(reason, act, verified, intent, intel, execute, status):
+    return [
+        {"phase": "reason", "title": "Reason", "text": reason, "status": "pass"},
+        {"phase": "act", "title": "Rule", "text": act, "status": "stop"},
+        {"phase": "verify", "title": "Intent", "text": intent, "products": verified, "status": status},
+        {"phase": "intel", "title": "Intel", "text": intel, "status": status},
+        {"phase": "negotiate", "title": "Channel", "text": "No rail is compared.", "rails": [], "status": status},
+        {"phase": "execute", "title": "Red", "text": execute, "status": status},
+    ]
+
+
+def record_settlement(session, category, total, rail, now):
+    session.settlements.append(
+        {"category": category, "total": total, "rail": rail, "at": now}
+    )
+
+
+def end_cooling(session=None):
+    session = session or SESSION
+    session.cooling_until = None
+    entry = seal(session, "cooling_ended", {"by": "customer"})
+    return {"cooling": False, "text": f"Cooling period ended. Record {entry['hash'][:12]}."}
+
+
+def stop_turn(decision, rule, reason, act, negotiate, execute, note, disposition=None):
     status = "hold" if decision == "ask" else "stop"
     return {
         "decision": decision,
@@ -349,6 +455,7 @@ def stop_turn(decision, rule, reason, act, negotiate, execute, note):
         "canSettle": False,
         "draftId": None,
         "note": note,
+        "disposition": disposition,
         "steps": [
             {"phase": "reason", "title": "Reason", "text": reason, "status": status if decision == "ask" else "pass"},
             {"phase": "act", "title": "Act", "text": act, "status": status},
@@ -364,6 +471,10 @@ def settle(draft_id, now=None, session=None):
     draft = session.drafts.get(draft_id)
     if not draft:
         raise ValueError("That authorization does not match an open purchase.")
+    if session.cooling_until and now < session.cooling_until:
+        raise ValueError("A cooling period is open.")
+    if draft.get("disposition") != "yellow":
+        raise ValueError("This payment is not waiting for confirmation.")
     problem = consent_problem(now, session)
     if problem:
         raise ValueError(problem)
@@ -376,16 +487,10 @@ def settle(draft_id, now=None, session=None):
             raise ValueError("This is over the entertainment cap.")
     else:
         raise ValueError("This category is outside the mandate.")
-    session.settlements.append(
-        {
-            "category": draft["category"],
-            "total": draft["total"],
-            "rail": draft["rail"],
-            "at": now,
-        }
-    )
+    record_settlement(session, draft["category"], draft["total"], draft["rail"], now)
     del session.drafts[draft_id]
     rail_name = next(rail["name"] for rail in RAILS if rail["id"] == draft["rail"])
+    receipt = seal(session, "receipt", {"total": draft["total"], "rail": draft["rail"], "payee": draft.get("payee")})
     reward = (
         f" Reward {money(draft['reward'])} USD is the 2026-10-02 fixture, not a live quote."
         if draft["reward"] is not None
@@ -395,7 +500,8 @@ def settle(draft_id, now=None, session=None):
         "settled": True,
         "rail": rail_name,
         "rule": draft["rule"],
-        "text": f"Settled {money(draft['total'])} USD on {rail_name}. Consent credential checked.{reward}",
+        "hash": receipt["hash"],
+        "text": f"Confirmed. Settled {money(draft['total'])} USD on {rail_name}. Record {receipt['hash'][:12]}.{reward}",
     }
 
 

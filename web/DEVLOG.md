@@ -59,3 +59,13 @@ Mastercard's 5% grocery and 2% general cashback are the scenario fixture supplie
 The shopping agent now filters a demo shelf and sends that list to a second agent in `web/verifier.py`. The verifier does not talk to the shopper. Its only tool is `rate_listing`: 3 is acceptable, 2 goes back for reconsideration, and 1 is a reject. The shopping agent drops anything that is not a 3 and will not settle an empty list.
 
 The second model is read from `VERIFY_API_BASE`, `VERIFY_API_KEY`, and `VERIFY_MODEL`. Those are empty until the API arrives. Until then every listing is unrated, which the shopping agent treats as reconsider. The shelf prices are scenario fixtures, not observed store prices.
+
+## 2026-10-02 17:39
+
+Refined the payment path into a shield, in English.
+
+The mandate names the agent, the scenes, the merchant list, the caps, a quantity limit of 2 entertainment tickets, and the expiry. Anything outside that is not paid. The credential still binds `did:example:hacku-customer` to `did:example:hacku-shopping-agent`.
+
+Three gates run before money moves. The rule gate checks amount, merchant, time, and quantity, and a mismatch is a veto. The intent gate is the verifier: rating 3 can clear, rating 2 asks the customer, rating 1 blocks. If that model is down, the payment cannot clear on its own. The intel gate checks a demo watchlist, labeled as a fixture from 2026-10-02, not a live fraud feed.
+
+Green settles and writes a hash. Yellow waits for confirmation. Red blocks and opens a 10-minute cooling period. Each shield decision and receipt is a hash linked to the previous one. This is a local log, not a bank chain.

@@ -2,9 +2,9 @@
 
 - group: G1
 - human: Jacinto
-- updated: 2026-10-02 17:28
+- updated: 2026-10-02 17:39
 - doing: none
-- done: ReAct loop; consent check; product verifier with `rate_listing` (1 reject, 3 accept)
+- done: shield with rule, intent, and intel gates; green, yellow, and red dispositions
 - blocked: none
 - next: none
-- ask_other: G2 connect `rate_listing` to the consent check before settlement
+- ask_other: G2 can still reply on the verifier connection; G1 has wired the three gates in `web/`

@@ -8,7 +8,7 @@ const revokeButton = document.querySelector("#revoke");
 
 appendMessage(
   "agent",
-  "Tell me a category and an amount. You will see Mastercard and UnionPay compared, then you authorize settlement."
+  "Say the category and the amount. The shield checks the mandate, the intent, and the payee before any payment."
 );
 
 examples.forEach((button) => {
@@ -81,6 +81,20 @@ async function askAgent(message) {
   return data;
 }
 
+async function endCooling(executeText, button) {
+  button.disabled = true;
+  try {
+    const response = await fetch("/api/cool", { method: "POST" });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error || "Could not end the cooling period.");
+    executeText.textContent = data.text;
+    button.remove();
+  } catch (error) {
+    executeText.textContent = error instanceof Error ? error.message : "Could not end the cooling period.";
+    button.disabled = false;
+  }
+}
+
 async function authorize(draftId, executeText, button) {
   button.disabled = true;
   try {
@@ -101,7 +115,7 @@ async function authorize(draftId, executeText, button) {
 
 function appendTurn(turn) {
   const item = document.createElement("li");
-  item.className = "message agent turn";
+  item.className = `message agent turn ${turn.disposition || ""}`;
   turn.steps.forEach((step) => {
     const block = document.createElement("section");
     block.className = `step ${step.status || ""}`;
@@ -129,8 +143,16 @@ function appendTurn(turn) {
       const button = document.createElement("button");
       button.type = "button";
       button.className = "authorize";
-      button.textContent = "Authorize settlement";
+      button.textContent = "Confirm payment";
       button.addEventListener("click", () => authorize(turn.draftId, text, button));
+      block.append(button);
+    }
+    if (step.phase === "execute" && turn.cooling) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "authorize";
+      button.textContent = "End cooling period";
+      button.addEventListener("click", () => endCooling(text, button));
       block.append(button);
     }
     item.append(block);

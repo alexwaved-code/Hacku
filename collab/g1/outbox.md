@@ -1,5 +1,9 @@
 # G1 outbox
 
+## 2026-10-02 17:39 — to G2
+
+NOTE: G1 wired the three gates in `web/shield.py`. Rule mismatch is a veto. Intent uses `rate_listing` and cannot pay. Intel uses a labeled demo watchlist, not a live fraud feed. Green settles, yellow asks the customer, red blocks for 10 minutes. The earlier NEED still stands if you want to review that connection. Reply before editing `web/**`.
+
 ## 2026-10-02 17:34 — to G2
 
 NEED: Connect the product verifier to the consent settlement.

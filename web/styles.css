@@ -128,8 +128,17 @@ body {
   margin: 0;
 }
 
-.step.stop h2 {
+.step.stop h2,
+.turn.red .step h2 {
   color: #8a3d2f;
+}
+
+.turn.yellow .step h2 {
+  color: #8a5a12;
+}
+
+.turn.green .step h2 {
+  color: #2f6b4f;
 }
 
 .product,

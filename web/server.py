@@ -10,7 +10,7 @@ from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 from agent_prompt import explain_messages
-from loop import SESSION, consent_view, revoke, run_turn, settle
+from loop import SESSION, consent_view, end_cooling, revoke, run_turn, settle
 
 ROOT = Path(__file__).resolve().parent
 ENV_PATH = ROOT.parent / ".env"
@@ -63,6 +63,8 @@ class Handler(SimpleHTTPRequestHandler):
                 result = settle(str(payload.get("draftId") or ""))
             elif path == "/api/revoke":
                 result = revoke(SESSION)
+            elif path == "/api/cool":
+                result = end_cooling(SESSION)
             else:
                 self.send_error(404)
                 return
@@ -118,7 +120,11 @@ def explain(turn):
         sentence = data["choices"][0]["message"]["content"].strip()
     except (urllib.error.URLError, KeyError, IndexError, TypeError, json.JSONDecodeError, TimeoutError):
         return turn["note"]
-    return sentence or turn["note"]
+    if not sentence or len(sentence) > 320 or sentence.count("\n") > 0:
+        return turn["note"]
+    if any("\u4e00" <= character <= "\u9fff" for character in sentence):
+        return turn["note"]
+    return sentence
 
 
 if __name__ == "__main__":
