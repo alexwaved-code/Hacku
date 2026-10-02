@@ -19,6 +19,10 @@ LINK_REFRESH = 8
 CARD_TOOL = "show_products"
 ASK_TOOL = "ask_user"
 BUY_TOOL = "buy"
+CART_TOOL = "update_cart"
+PAGE_TOOL = "control_page"
+PAGE_ACTIONS = ("open_cart", "cart_page", "orders_page", "new_chat", "chinese", "english")
+MAX_CART = 30
 MAX_BUY = 5
 MAX_QUESTIONS = 3
 MAX_OPTIONS = 6
@@ -37,6 +41,7 @@ PROMO_WORDS = {"mastercard", "visa", "unionpay", "hsbc", "amex", "aeon", "sale",
 PRODUCT_PATH = re.compile(r"/(?:products?|p|item|goods|dp)/", re.IGNORECASE)
 NOT_PRODUCT_PATH = re.compile(r"/(?:collections?|categor(?:y|ies)|promotions?|search|brands?|tag|list|topic)s?(?:/|$)|promotion", re.IGNORECASE)
 LANG = contextvars.ContextVar("lang", default="zh")
+CART = contextvars.ContextVar("cart", default=None)
 REGION_NAMES_EN = {"hk": "Hong Kong", "tw": "Taiwan", "cn": "China", "jp": "Japan", "kr": "Korea", "sg": "Singapore", "us": "the US", "uk": "the UK", "au": "Australia"}
 REGION_NAMES = {"hk": "香港", "tw": "台灣", "cn": "中國", "jp": "日本", "kr": "韓國", "sg": "新加坡", "us": "美國", "uk": "英國", "au": "澳洲"}
 STORE_PAGES = 5
@@ -168,11 +173,60 @@ TOOL_SCHEMAS = [
     {
         "type": "function",
         "function": {
+            "name": CART_TOOL,
+            "description": (
+                "Change the shopper's cart on this page. add: products by ref (from cards or open_page). "
+                "set: a new quantity for a cart line (c1, c2…). remove: cart lines. clear: empty the cart. Call it only when the shopper asks."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "add": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {"ref": {"type": "string"}, "qty": {"type": "integer", "minimum": 1, "maximum": 10}},
+                            "required": ["ref"],
+                        },
+                    },
+                    "set": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {"line": {"type": "string", "description": "c1, c2…"}, "qty": {"type": "integer", "minimum": 1, "maximum": 10}},
+                            "required": ["line", "qty"],
+                        },
+                    },
+                    "remove": {"type": "array", "items": {"type": "string", "description": "c1, c2…"}},
+                    "clear": {"type": "boolean", "description": "True to remove every line."},
+                },
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": PAGE_TOOL,
+            "description": (
+                "Do something on this app for the shopper. open_cart: show the cart panel. cart_page: go to the cart page, "
+                "where they check out and sign or change the payment authorization. orders_page: go to the order desk with paid orders and delivery. "
+                "new_chat: start a fresh chat. chinese / english: switch the page language. Pages open after your reply."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {"action": {"type": "string", "enum": list(PAGE_ACTIONS)}},
+                "required": ["action"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": BUY_TOOL,
             "description": (
-                "Prepare an order for products shown on cards. Nothing is paid by this tool. "
+                "Prepare an order for products shown on cards or lines in the shopper's cart. Nothing is paid by this tool. "
                 "The page shows the order with a pay button that opens Stripe, where the shopper pays and gives a delivery address. "
-                "Call it only when the shopper clearly asks to buy specific products from the cards. All items must share one currency. "
+                "Call it only when the shopper clearly asks to buy specific products from the cards or the cart. All items must share one currency. "
                 "It is refused at once when the mandate does not cover the total, a cooling period is open, "
                 "or, with real payments, the order is over the real-payment cap; the result then says why."
             ),
@@ -187,9 +241,9 @@ TOOL_SCHEMAS = [
                             "type": "object",
                             "properties": {
                                 "ref": {"type": "string", "description": "ref of a product the shopper saw on a card."},
+                                "line": {"type": "string", "description": "Or a cart line, c1, c2…"},
                                 "qty": {"type": "integer", "minimum": 1, "maximum": 10},
                             },
-                            "required": ["ref"],
                         },
                     }
                 },
@@ -203,6 +257,7 @@ _cache = OrderedDict()
 _lock = threading.Lock()
 _counter = count(1)
 _quoter = None
+_app_state = None
 _links = ThreadPoolExecutor(max_workers=6, thread_name_prefix="links")
 
 
@@ -230,6 +285,10 @@ def tool_label(name, args):
     if name == "open_page":
         site = web._site(str(args.get("url") or ""))
         return say(f"讀取 {site or '網頁'}", f"Reading {site or 'the page'}")
+    if name == PAGE_TOOL:
+        return say("操作頁面", "Using the page")
+    if name == CART_TOOL:
+        return say("更新購物車", "Updating the cart")
     if name == "show_products":
         return say("挑出最合適的商品", "Picking the best matches")
     if name == ASK_TOOL:
@@ -283,6 +342,10 @@ def run_tool(name, args):
             return open_page(str(args.get("url") or ""))
         if name == BUY_TOOL:
             return buy(args.get("items"))
+        if name == PAGE_TOOL:
+            return control_page(str(args.get("action") or ""))
+        if name == CART_TOOL:
+            return update_cart(args)
     except web.FetchError as error:
         return _fail(str(error), _short_error(str(error)))
     except Exception as error:
@@ -436,19 +499,24 @@ def buy(entries):
         return _fail("Payments are not connected on this server.", say("付款未連線", "Payments offline"))
     if not isinstance(entries, list) or not entries:
         return _fail("items must list at least one ref.", say("沒有商品", "No items"))
-    chosen = []
-    with _lock:
-        for entry in entries[:MAX_BUY]:
-            entry = entry if isinstance(entry, dict) else {"ref": entry}
-            item = _cache.get(str(entry.get("ref")))
-            if item is None:
-                return _fail("That ref is unknown or expired. Search again and show the products first.", say("找不到商品", "Product not found"))
-            qty = entry.get("qty", 1)
-            qty = int(qty) if isinstance(qty, (int, float, str)) and str(qty).strip().isdigit() else 1
-            chosen.append((dict(item), qty))
+    lines = cart_lines()
     payload = []
-    for item, qty in chosen:
-        card = _card(item)
+    for entry in entries[:MAX_BUY]:
+        entry = entry if isinstance(entry, dict) else {"ref": entry}
+        qty = _qty(entry.get("qty"))
+        line = lines.get(str(entry.get("line") or "").strip().lower())
+        if entry.get("line"):
+            if line is None:
+                return _fail("That cart line is not in the cart.", say("購物車沒有這件", "Not in the cart"))
+            if not line["sealed"]:
+                return _fail("This cart line has no server seal. Show it again from a search, then buy it from the card.", say("商品需要重新查價", "Needs a fresh price"))
+            payload.append({**line["item"], "id": line["id"], "qty": _qty(entry.get("qty") or line["qty"]), "sig": line["sig"]})
+            continue
+        with _lock:
+            item = _cache.get(str(entry.get("ref")))
+        if item is None:
+            return _fail("That ref is unknown or expired. Search again and show the products first.", say("找不到商品", "Product not found"))
+        card = _card(dict(item))
         payload.append({**{field: card[field] for field in cards.FIELDS}, "id": card["url"] or card["name"], "qty": qty, "sig": card["sig"]})
     result = _quoter(payload)
     if not result.get("ok"):
@@ -488,6 +556,136 @@ def buy(entries):
         },
         "ui": {"kind": "order", **order, "lines": result["items"], "items": payload},
     }
+
+
+def control_page(action):
+    if action not in PAGE_ACTIONS:
+        return _fail(f"Unknown page action. Use one of {', '.join(PAGE_ACTIONS)}.", say("沒有這個操作", "Unknown action"))
+    replies = {
+        "open_cart": ("購物車在右邊。", "Your cart is open on the right."),
+        "cart_page": ("正在打開購物車頁面，可以在那裡結帳或修改付款授權。", "Opening the cart page, where you can check out or change the payment authorization."),
+        "orders_page": ("正在打開代購訂單頁面。", "Opening the orders page."),
+        "new_chat": ("好的，開一個新對話。", "Starting a new chat."),
+        "chinese": ("已切換成中文。", "已切換成中文。"),
+        "english": ("Switched to English.", "Switched to English."),
+    }
+    zh, en = replies[action]
+    return {"ok": True, "summary": say("完成", "Done"), "reply": say(zh, en), "model": {"done": action}, "ui": {"kind": "page", "action": action}}
+
+
+def set_app_state(read):
+    """read() returns what the app knows outside the chat: the payment authorization and recent paid orders."""
+    global _app_state
+    _app_state = read
+
+
+def app_state():
+    if _app_state is None:
+        return None
+    try:
+        return _app_state()
+    except Exception:
+        return None
+
+
+def set_cart(raw):
+    """The cart the page sent with this request, labelled c1, c2… for the model."""
+    lines = []
+    for entry in (raw if isinstance(raw, list) else [])[:MAX_CART]:
+        if not isinstance(entry, dict):
+            continue
+        sealed = entry.get("sealed") if isinstance(entry.get("sealed"), dict) else {}
+        item = {field: sealed.get(field) for field in cards.FIELDS}
+        if not item["name"]:
+            continue
+        sig = entry.get("sig") if isinstance(entry.get("sig"), str) else ""
+        lines.append(
+            {
+                "line": f"c{len(lines) + 1}",
+                "id": str(entry.get("id") or item["url"] or item["name"])[:500],
+                "qty": _qty(entry.get("qty")),
+                "item": item,
+                "sig": sig,
+                "sealed": cards.valid(item, sig),
+            }
+        )
+    return CART.set(lines)
+
+
+def cart_lines():
+    return {line["line"]: line for line in CART.get() or []}
+
+
+def cart_view():
+    view = []
+    for line in CART.get() or []:
+        row = {"line": line["line"], "name": line["item"]["name"], "store": line["item"]["store"], "price": line["item"]["price"], "currency": line["item"]["currency"], "qty": line["qty"]}
+        if not line["sealed"]:
+            row["note"] = "no server seal; search it again before buying"
+        view.append(row)
+    return view
+
+
+def update_cart(args):
+    lines = CART.get()
+    if lines is None:
+        return _fail("This page did not send its cart.", say("看不到購物車", "Cart not available"))
+    by_line = cart_lines()
+    ops, done = [], []
+    if args.get("clear") is True and lines:
+        ops += [{"op": "remove", "id": line["id"]} for line in lines]
+        done.append(say(f"清空 {len(lines)} 項", f"emptied {len(lines)} line" + ("" if len(lines) == 1 else "s")))
+        lines.clear()
+    for entry in (args.get("remove") or [])[:MAX_CART]:
+        line = by_line.get(str(entry).strip().lower())
+        if line and line in lines:
+            lines.remove(line)
+            ops.append({"op": "remove", "id": line["id"]})
+            done.append(say(f"移除 {line['item']['name']}", f"removed {line['item']['name']}"))
+    for entry in (args.get("set") or [])[:MAX_CART]:
+        line = by_line.get(str((entry or {}).get("line") or "").strip().lower()) if isinstance(entry, dict) else None
+        if line and line in lines:
+            line["qty"] = _qty(entry.get("qty"))
+            ops.append({"op": "set", "id": line["id"], "qty": line["qty"]})
+            done.append(say(f"{line['item']['name']} 改成 {line['qty']} 件", f"{line['item']['name']} set to {line['qty']}"))
+    for entry in (args.get("add") or [])[:MAX_BUY]:
+        if not isinstance(entry, dict):
+            continue
+        with _lock:
+            item = _cache.get(str(entry.get("ref")))
+        if item is None:
+            return _fail("That ref is unknown or expired. Search or open the product first.", say("找不到商品", "Product not found"))
+        card = _card(dict(item))
+        qty = _qty(entry.get("qty"))
+        product = {field: card[field] for field in cards.FIELDS}
+        price = card["price"]
+        price = int(price) if isinstance(price, float) and price.is_integer() else price
+        line_id = card["url"] or f"{card['name']}|{card['store']}|{'null' if price is None else price}"
+        existing = next((line for line in lines if line["id"] == line_id), None)
+        if existing:
+            existing["qty"] += qty
+        else:
+            lines.append({"line": f"c{len(lines) + 1}", "id": line_id, "qty": qty, "item": product, "sig": card["sig"], "sealed": True})
+        ops.append({"op": "add", "card": card, "qty": qty})
+        done.append(say(f"加入 {card['name']} × {qty}", f"added {card['name']} × {qty}"))
+    if not ops:
+        return _fail("Nothing to change. Use cart lines like c1 or refs from shown products.", say("沒有變更", "No change"))
+    for index, line in enumerate(lines, 1):
+        line["line"] = f"c{index}"
+    return {
+        "ok": True,
+        "summary": say(f"{len(ops)} 項變更", f"{len(ops)} change" + ("" if len(ops) == 1 else "s")),
+        "reply": say("購物車已更新：", "Cart updated: ") + say("、", "; ").join(done) + say("。", "."),
+        "model": {"cart": cart_view()},
+        "ui": {"kind": "cart", "ops": ops},
+    }
+
+
+def _qty(value):
+    try:
+        return max(1, min(10, int(value)))
+    except (TypeError, ValueError):
+        return 1
 
 
 def has_refs(model):

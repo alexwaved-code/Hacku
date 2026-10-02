@@ -250,3 +250,19 @@ Side panels rebuilt, and the answer now points at its cards.
 
 48 unit tests pass, including the English labels and the Chinese default. An English turn for a Bluetooth speaker under HK$300 took 14 seconds in the page: English steps and reply, five cards, the Sony card picked, 「The first one」 linked to card 1. Switched both ways at 1024 px and 390 px.
 
+## 2026-10-03 01:45
+
+The agent can see and run the app, not only search.
+
+**What shipped**
+
+- The page sends its cart with each chat request. The system prompt lists it as lines `c1`, `c2`…, plus the payment authorization and the 5 latest paid orders, so 「我的購物車有什麼」, 「授權還有多少」, and 「上次買了什麼」 need no tool.
+- `update_cart` adds products by ref, changes quantities, removes lines, or empties the cart. The page applies it through `HackuCart`; the server writes the summary and the turn ends.
+- `buy` takes cart lines. Each line's seal is checked again before the quote.
+- `control_page` opens the cart panel, goes to the cart page or the orders page, starts a new chat, or switches the language. Leaving the page waits until the reply is saved.
+- `server.py` hands the authorization and orders to the agent with `tools.set_app_state`; `agent/` still does not import `pay/`.
+
+**Checked**
+
+54 unit tests pass. In the page: a search for speakers under HK$300, then 「把第一個加入購物車，要兩件」 (cart shows 2 × HK$101), 「我的購物車有什麼？」 (HK$202), 「打開購物車」, 「我的付款授權還有多少？上次買了什麼？」 (caps, end date, five orders), 「改成一件就好」, 「清空購物車」, and switching to English and back by asking.
+

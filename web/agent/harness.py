@@ -8,7 +8,7 @@ from datetime import datetime, timedelta, timezone
 import llm
 from llm import Busy, UpstreamError
 
-from .tools import ASK_TOOL, BUY_TOOL, CARD_TOOL, LANG, TOOL_SCHEMAS, clean_questions, has_refs, pick_cards, refresh_cards, run_tool, say, tool_label
+from .tools import ASK_TOOL, BUY_TOOL, CARD_TOOL, CART, CART_TOOL, LANG, PAGE_TOOL, TOOL_SCHEMAS, app_state, cart_view, clean_questions, has_refs, pick_cards, refresh_cards, run_tool, say, set_cart, tool_label
 
 MAX_ROUNDS = 7
 MAX_PARALLEL = 4
@@ -36,7 +36,16 @@ Tools:
 - shop_search: live product offers with real prices and pictures. Default is every store in Hong Kong. Set store when the user names a store or website (Taobao, Tmall, JD, Amazon, HKTVmall, IKEA, any domain). Set region when they want another country.
 - After a search the page itself shows the user up to 5 offers as cards (picture, price, store, link). The show_products result lists them in card order; the first card is 第一個.
 - web_search and open_page: reviews, specs, news, facts, or a store's own page.
+- update_cart: adds products (by ref) to the shopper's cart, changes a cart line's quantity, removes lines, or empties the cart.
+- control_page: runs this app for the shopper: open the cart panel, go to the cart page (checkout and payment authorization) or the orders page, start a new chat, or switch the page to Chinese or English.
 - buy: prepares an order for products from the cards. It pays nothing. The page shows the order with a 確認付款 button; only the shopper's press opens Stripe, where they pay and give a Hong Kong delivery address, inside the spending mandate they signed (a per-order cap per currency). The payment service checks the mandate, a cooling period, and a second verifier model; you cannot override them.
+
+Cart:
+- The shopper's cart is listed at the end of this message, one line each (c1, c2…), as it is right now. Answer questions about it (what is in it, the total, which is cheaper elsewhere) straight from that list.
+- "加入購物車", "放進購物車", "add to cart", "第一個加兩件" mean update_cart with that card's ref. Use update_cart only when the shopper asks to add, change, remove, or empty. After it, the page shows the change and the turn ends.
+- The payment authorization and recent paid orders are listed at the end too. Answer "我的授權還有多少", "上次買了什麼", or "訂單到哪了" from them. To sign or change the authorization, send the shopper to the cart page with control_page; you cannot sign it for them.
+- When the shopper asks you to open, show, or go to a part of this app, use control_page.
+- To buy what is in the cart, call buy with those lines, for example {{"items": [{{"line": "c1"}}, {{"line": "c2"}}]}}. A line marked "no server seal" must be searched and shown again first.
 
 Buying:
 - Call buy only when the user clearly asks you to buy (買、下單、付款、buy) a product they saw on a card. "第一個", "便宜那個", or a product name points to a card. Use that card's ref from the show_products result. Never buy on your own initiative, and never buy something the user did not see.
@@ -82,18 +91,27 @@ class Stalled(Exception):
 
 def system_prompt():
     now = datetime.now(timezone(timedelta(hours=8))).strftime("%Y-%m-%d %H:%M")
-    return SYSTEM_PROMPT_TEMPLATE.format(now=now) + (ENGLISH_PAGE if LANG.get() == "en" else "")
+    prompt = SYSTEM_PROMPT_TEMPLATE.format(now=now) + (ENGLISH_PAGE if LANG.get() == "en" else "")
+    if CART.get() is None:
+        prompt += "\n\nThe shopper's cart: this page did not send it."
+    else:
+        lines = cart_view()
+        prompt += "\n\nThe shopper's cart now: " + (json.dumps(lines, ensure_ascii=False) if lines else "empty.")
+    state = app_state()
+    return prompt + ("\n\nThe app now: " + json.dumps(state, ensure_ascii=False) if state else "")
 
 
 def text_for(zh):
     return say(zh, ENGLISH_TEXT.get(zh, zh))
 
 
-def run(config, history, emit, lang="zh"):
+def run(config, history, emit, lang="zh", cart=None):
     token = LANG.set(lang if lang in LANGS else "zh")
+    cart_token = set_cart(cart) if isinstance(cart, list) else CART.set(None)
     try:
         _run(config, history, emit)
     finally:
+        CART.reset(cart_token)
         LANG.reset(token)
 
 
@@ -211,7 +229,7 @@ def _assistant(calls, content):
 
 def _closing(calls, results):
     """The reply when it is already known, so the turn ends without one more model round."""
-    if {call["name"] for call in calls} == {BUY_TOOL} and all((results.get(call["id"]) or {}).get("reply") for call in calls):
+    if {call["name"] for call in calls} <= {BUY_TOOL, CART_TOOL, PAGE_TOOL} and all((results.get(call["id"]) or {}).get("reply") for call in calls):
         return " ".join(results[call["id"]]["reply"] for call in calls)
     return None
 

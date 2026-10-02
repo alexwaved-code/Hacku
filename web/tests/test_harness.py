@@ -2,6 +2,7 @@ import json
 import unittest
 from unittest import mock
 
+import cards
 from agent import harness, tools
 from helpers import TempData
 
@@ -62,7 +63,7 @@ def two_searches():
 
 
 class HarnessTest(TempData):
-    def run_turn(self, *streams, lang="zh"):
+    def run_turn(self, *streams, lang="zh", cart=None):
         script = list(streams)
         opened = []
 
@@ -74,7 +75,7 @@ class HarnessTest(TempData):
 
         events = []
         with mock.patch.object(harness.llm, "open_stream", side_effect=open_stream), mock.patch.object(harness, "run_tool", fake_tools):
-            harness.run(CONFIG, [{"role": "user", "content": "買充電線"}], events.append, lang=lang)
+            harness.run(CONFIG, [{"role": "user", "content": "買充電線"}], events.append, lang=lang, cart=cart)
         return events, opened
 
     def tearDown(self):
@@ -185,6 +186,73 @@ class HarnessTest(TempData):
         self.assertEqual(len(opened), 1)
         self.assertEqual(events[-1]["messages"][-1]["content"], "你好")
 
+
+    def cart_line(self, sealed=True):
+        item = {field: offer()[field] for field in cards.FIELDS}
+        return {"id": item["url"], "qty": 2, "sealed": item, "sig": cards.seal(item) if sealed else ""}
+
+    def test_cart_is_in_the_prompt(self):
+        events, opened = self.run_turn(FakeStream([say("你的購物車有一條充電線。")]), cart=[self.cart_line()])
+        prompt = opened[0].body["messages"][0]["content"]
+        self.assertIn('"line": "c1"', prompt)
+        self.assertIn("MOMAX 60W cable", prompt)
+        self.assertNotIn("no server seal", prompt.split("cart now:")[1])
+        events, opened = self.run_turn(FakeStream([say("你好")]))
+        self.assertIn("did not send", opened[0].body["messages"][0]["content"])
+        self.assertIsNone(tools.CART.get())
+
+    def test_update_cart_changes_lines_and_ends_the_turn(self):
+        ref = tools._remember({**offer(), "name": "Anker cable", "url": "https://www.hktvmall.com/p/2"})
+        args = {"set": [{"line": "c1", "qty": 3}], "add": [{"ref": ref, "qty": 1}]}
+        events, opened = self.run_turn(FakeStream([call("update_cart", args)]), cart=[self.cart_line()])
+        self.assertEqual(len(opened), 1)
+        result = next(e for e in events if e["type"] == "tool_result")
+        ops = result["ui"]["ops"]
+        self.assertEqual(ops[0], {"op": "set", "id": "https://www.hktvmall.com/p/1", "qty": 3})
+        self.assertEqual(ops[1]["op"], "add")
+        self.assertTrue(cards.valid({f: ops[1]["card"][f] for f in cards.FIELDS}, ops[1]["card"]["sig"]))
+        text = "".join(e["text"] for e in events if e["type"] == "delta")
+        self.assertIn("購物車已更新", text)
+        self.assertIn("Anker cable", text)
+
+    def test_buy_from_cart_lines_sends_the_sealed_items(self):
+        seen = []
+        tools.set_quoter(lambda items: seen.extend(items) or {"ok": True, "total": 138.0, "currency": "HKD", "cap": 500, "live": False, "items": [{"name": "MOMAX 60W cable", "qty": 2}]})
+        events, opened = self.run_turn(FakeStream([call("buy", {"items": [{"line": "c1"}]})]), cart=[self.cart_line()])
+        self.assertEqual(seen[0]["qty"], 2)
+        self.assertEqual(seen[0]["sig"], cards.seal({f: offer()[f] for f in cards.FIELDS}))
+        self.assertEqual(len(opened), 1)
+        token = tools.set_cart([self.cart_line(sealed=False)])
+        try:
+            refused = tools.buy([{"line": "c1"}])
+        finally:
+            tools.CART.reset(token)
+        self.assertFalse(refused["ok"])
+
+    def test_clear_empties_the_cart(self):
+        token = tools.set_cart([self.cart_line(), {**self.cart_line(), "id": "other"}])
+        try:
+            result = tools.update_cart({"clear": True})
+        finally:
+            tools.CART.reset(token)
+        self.assertEqual([op["op"] for op in result["ui"]["ops"]], ["remove", "remove"])
+        self.assertEqual(result["model"]["cart"], [])
+
+    def test_page_actions_run_on_the_page_and_end_the_turn(self):
+        events, opened = self.run_turn(FakeStream([call("control_page", {"action": "cart_page"})]), cart=[])
+        self.assertEqual(len(opened), 1)
+        result = next(e for e in events if e["type"] == "tool_result")
+        self.assertEqual(result["ui"], {"kind": "page", "action": "cart_page"})
+        self.assertIn("購物車頁面", "".join(e["text"] for e in events if e["type"] == "delta"))
+        self.assertFalse(tools.control_page("delete_everything")["ok"])
+
+    def test_authorization_and_orders_are_in_the_prompt(self):
+        tools.set_app_state(lambda: {"payment_authorization": {"valid": True, "caps": {"HKD": 500}}, "recent_paid_orders": []})
+        try:
+            events, opened = self.run_turn(FakeStream([say("每筆上限 HK$500。")]), cart=[])
+        finally:
+            tools.set_app_state(None)
+        self.assertIn('"caps": {"HKD": 500}', opened[0].body["messages"][0]["content"])
 
 if __name__ == "__main__":
     unittest.main()

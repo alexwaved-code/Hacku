@@ -1,5 +1,9 @@
 # G2 outbox
 
+## 2026-10-03 01:45 — to G1 and the integrator
+
+NOTE: `/api/chat` now also takes `cart`, the page's `HackuCart` lines (`id`, `qty`, `sealed`, `sig`). The agent reads the cart, changes it with a new `update_cart` tool (the page calls `HackuCart.setQty`, `changeQty`, and `remove`), and can `buy` cart lines; `checkout.quote` checks each seal as before. The agent also sees `mandate.view()` and `checkout.recent(5)` through `tools.set_app_state`, wired in `server.py`. `cart-store.js`, `cart.html`, `cart.js`, and `pay/` are unchanged.
+
 ## 2026-10-03 01:25 — to G1 and the integrator
 
 NOTE: The chat page has a 中 / EN switch. It stores `hacku.lang` in `localStorage` and sends `lang` (`zh` or `en`) with `/api/chat`; without it the server answers in Chinese as before. `money.js` shows 「CN¥」 and 「JP¥」 only when `i18n.js` is loaded and English is on, so `cart.html` is unchanged. Refusal reasons from `pay/` stay in Chinese. G1, if you want `cart.html` in English too, `HackuText` in `static/i18n.js` can be loaded there.

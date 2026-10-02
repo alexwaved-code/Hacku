@@ -120,7 +120,7 @@ class Handler(SimpleHTTPRequestHandler):
                 raise harness.Aborted() from error
 
         try:
-            harness.run(config.CHAT, messages, emit, lang="en" if payload.get("lang") == "en" else "zh")
+            harness.run(config.CHAT, messages, emit, lang="en" if payload.get("lang") == "en" else "zh", cart=payload.get("cart"))
         except harness.Aborted:
             return
         except llm.UpstreamError as error:
@@ -198,6 +198,28 @@ def agent_quote(items):
 
 
 tools.set_quoter(agent_quote)
+
+
+def agent_app_state():
+    view = mandate.view()
+    orders = checkout.recent(5)["orders"]
+    return {
+        "payment_authorization": {key: view.get(key) for key in ("valid", "caps", "expires", "detail")},
+        "recent_paid_orders": [
+            {
+                "at": order.get("at"),
+                "total": order.get("total"),
+                "currency": order.get("currency"),
+                "items": [f"{item.get('name')} × {item.get('qty')}" for item in order.get("items") or []][:5],
+                "status": order.get("fulfil"),
+                "live": order.get("live"),
+            }
+            for order in orders
+        ],
+    }
+
+
+tools.set_app_state(agent_app_state)
 
 
 def start_fulfil(order_id):

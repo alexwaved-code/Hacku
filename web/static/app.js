@@ -31,6 +31,7 @@ const state = {
   busy: false,
   controller: null,
   pendingAsk: null,
+  afterTurn: null,
 };
 const cardPainters = new Set();
 let cartSeen = null;
@@ -117,6 +118,22 @@ HackuText.apply();
 updateCartCount();
 renderMandate();
 
+function cartForAgent() {
+  return HackuCart.load().map((item) => ({ id: item.id, qty: item.qty, sealed: item.sealed, sig: item.sig }));
+}
+
+function applyCartOps(ops) {
+  for (const op of Array.isArray(ops) ? ops : []) {
+    if (op.op === "add" && op.card) HackuCart.setQty(op.card, HackuCart.qtyOf(op.card) + (Number(op.qty) || 1));
+    else if (op.op === "remove") HackuCart.remove(op.id);
+    else if (op.op === "set") {
+      const item = HackuCart.load().find((entry) => entry.id === op.id);
+      if (item) HackuCart.changeQty(op.id, (Number(op.qty) || 1) - (Number(item.qty) || 1));
+    }
+  }
+  updateCartCount();
+}
+
 function setLanguage(lang) {
   if (lang === HackuText.get()) return;
   HackuText.set(lang);
@@ -187,6 +204,7 @@ async function runTurn(display, entries) {
     syncOrders();
     saveChat();
   } catch (error) {
+    state.afterTurn = null;
     if (turn.timedOut) {
       state.thread.length = base;
       turn.fail(t("timeout"), retry);
@@ -201,7 +219,35 @@ async function runTurn(display, entries) {
     state.controller = null;
     setBusy(false);
     if (!state.pendingAsk) els.input.focus();
+    runAfterTurn();
   }
+}
+
+function pageAction(action) {
+  if (action === "open_cart") {
+    if (!openDrawer(els.sideCartPanel)) {
+      els.sideCartPanel?.classList.remove("flash");
+      void els.sideCartPanel?.offsetWidth;
+      els.sideCartPanel?.classList.add("flash");
+    }
+    return;
+  }
+  state.afterTurn = action;
+}
+
+function runAfterTurn() {
+  const action = state.afterTurn;
+  state.afterTurn = null;
+  if (!action) return;
+  const go = (href) => setTimeout(() => {
+    saveChat();
+    location.href = href;
+  }, 900);
+  if (action === "cart_page") go("cart.html");
+  else if (action === "orders_page") go("orders.html");
+  else if (action === "new_chat") setTimeout(resetChat, 900);
+  else if (action === "chinese") setLanguage("zh");
+  else if (action === "english") setLanguage("en");
 }
 
 async function streamChat(controller, turn) {
@@ -221,7 +267,7 @@ async function streamChat(controller, turn) {
       response = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
-        body: JSON.stringify({ messages: state.thread, lang: HackuText.get() }),
+        body: JSON.stringify({ messages: state.thread, lang: HackuText.get(), cart: cartForAgent() }),
         signal: controller.signal,
       });
     } catch (error) {
@@ -895,6 +941,8 @@ function createTurn() {
         this.showCards(event.ui.items);
         scrollToEnd();
       }
+      if (event.ui?.kind === "cart") applyCartOps(event.ui.ops);
+      if (event.ui?.kind === "page") pageAction(event.ui.action);
       if (event.ui?.kind === "receipt" || event.ui?.kind === "order") {
         const entry = { ...event.ui, call: event.id };
         item._receipts.push(entry);
