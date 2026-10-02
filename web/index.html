@@ -13,7 +13,10 @@
           <h1>購物助理</h1>
           <p class="sub">上網查真實商品和價錢，也能指定淘寶、Amazon 等商店。下單由你自己決定。</p>
         </div>
-        <button type="button" id="new-chat" class="pill">新對話</button>
+        <div class="header-actions">
+          <button type="button" id="new-chat" class="pill">新對話</button>
+          <a id="cart-link" class="pill" href="cart.html">購物車<span id="cart-count"></span></a>
+        </div>
       </header>
       <ol id="messages" class="messages" aria-live="polite"></ol>
       <footer class="dock">
@@ -30,6 +33,7 @@
         </form>
       </footer>
     </main>
+    <script src="cart-store.js"></script>
     <script src="app.js"></script>
   </body>
 </html>

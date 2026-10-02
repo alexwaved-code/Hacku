@@ -7,9 +7,11 @@ const els = {
   send: $("#send"),
   stop: $("#stop"),
   newChat: $("#new-chat"),
+  cartLink: $("#cart-link"),
   examples: document.querySelectorAll("#examples [data-prompt]"),
 };
 
+const CHAT_KEY = "hacku.chat";
 const IDLE_TIMEOUT_MS = 75000;
 const GREETING = "想買什麼？說出預算、用途，或想逛的商店，我幫你上網查。其他問題也可以問我。";
 const PLACEHOLDER = "想買什麼，或想問什麼？";
@@ -30,10 +32,11 @@ els.form.addEventListener("submit", (event) => {
   send(text);
 });
 els.stop.addEventListener("click", () => state.controller?.abort());
-els.newChat.addEventListener("click", resetChat);
 els.examples.forEach((button) => button.addEventListener("click", () => send(button.dataset.prompt)));
-
-resetChat();
+els.newChat.addEventListener("click", resetChat);
+els.cartLink.addEventListener("click", saveChat);
+window.addEventListener("pagehide", saveChat);
+updateCartCount();
 
 /* ---------- Sending ---------- */
 
@@ -54,6 +57,7 @@ function takePendingAsk(payload) {
   const ask = state.pendingAsk;
   if (!ask) return null;
   state.pendingAsk = null;
+  state.openAsk = null;
   els.input.placeholder = PLACEHOLDER;
   ask.close(payload);
   return { role: "tool", tool_call_id: ask.id, content: JSON.stringify(payload) };
@@ -78,6 +82,7 @@ async function runTurn(display, entries) {
     const added = await streamChat(controller, turn);
     await turn.finish();
     state.thread.push(...added);
+    saveChat();
   } catch (error) {
     if (turn.timedOut) {
       state.thread.length = base;
@@ -174,6 +179,13 @@ function parseEvent(block) {
   }
 }
 
+function updateCartCount() {
+  const badge = document.querySelector("#cart-count");
+  if (!badge) return;
+  const count = HackuCart.count();
+  badge.textContent = count ? ` ${count}` : "";
+}
+
 function setBusy(busy) {
   state.busy = busy;
   els.send.hidden = busy;
@@ -187,10 +199,86 @@ function resetChat() {
   state.controller?.abort();
   state.thread = [];
   state.pendingAsk = null;
+  state.openAsk = null;
   els.input.placeholder = PLACEHOLDER;
-  els.list.replaceChildren(h("li", { class: "message agent" }, GREETING));
   els.input.value = "";
+  sessionStorage.removeItem(CHAT_KEY);
+  els.list.replaceChildren(h("li", { class: "message agent" }, GREETING));
   els.input.focus();
+}
+
+function restoreChat() {
+  const saved = readChat();
+  if (!saved) {
+    els.list.replaceChildren(h("li", { class: "message agent" }, GREETING));
+    return;
+  }
+  state.thread = Array.isArray(saved.thread) ? saved.thread : [];
+  els.list.replaceChildren();
+  for (const entry of saved.view || []) {
+    if (entry.kind === "user") appendUser(entry.text);
+    else if (entry.kind === "agent") appendSavedAgent(entry);
+    else els.list.append(h("li", { class: "message agent" }, entry.text || GREETING));
+  }
+  if (!els.list.children.length) els.list.append(h("li", { class: "message agent" }, GREETING));
+  if (saved.openAsk) {
+    const card = askCard(saved.openAsk.questions || []);
+    els.list.lastElementChild?.append(card.el);
+    state.pendingAsk = { id: saved.openAsk.id, close: card.close };
+    state.openAsk = saved.openAsk;
+    els.input.placeholder = ASK_PLACEHOLDER;
+  }
+}
+
+function readChat() {
+  try {
+    const saved = JSON.parse(sessionStorage.getItem(CHAT_KEY) || "");
+    if (!saved || !Array.isArray(saved.view)) return null;
+    return saved;
+  } catch {
+    return null;
+  }
+}
+
+function saveChat() {
+  try {
+    sessionStorage.setItem(
+      CHAT_KEY,
+      JSON.stringify({
+        thread: state.thread,
+        view: snapshotView(),
+        openAsk: state.openAsk || null,
+      })
+    );
+  } catch {
+    /* The browser refused to store the chat. The cart still works. */
+  }
+}
+
+function snapshotView() {
+  return [...els.list.children].map((item) => {
+    if (item.classList.contains("user")) return { kind: "user", text: item.textContent };
+    if (item.classList.contains("turn")) {
+      return {
+        kind: "agent",
+        text: item._markdown || item.querySelector(".text")?.innerText || "",
+        products: item._products || [],
+      };
+    }
+    return { kind: "note", text: item.textContent };
+  });
+}
+
+function appendSavedAgent(entry) {
+  const text = h("div", { class: "text" });
+  if (entry.text) text.innerHTML = renderMarkdown(entry.text);
+  const cards = h("div", { class: "cards" });
+  const products = Array.isArray(entry.products) ? entry.products : [];
+  if (products.length) cards.append(...products.map((product, index) => productCard(product, index === 0)));
+  const item = h("li", { class: "message agent turn" }, cards, text);
+  item._markdown = entry.text || "";
+  item._products = products;
+  els.list.append(item);
 }
 
 /* ---------- Messages ---------- */
@@ -238,6 +326,7 @@ function createTurn() {
       running.delete(event.id);
       showStatus();
       if (event.ui?.kind === "products") {
+        item._products = event.ui.items;
         cards.replaceChildren(...event.ui.items.map((product, index) => productCard(product, index === 0)));
         scrollToEnd();
       }
@@ -246,12 +335,14 @@ function createTurn() {
       status.hidden = true;
       const card = askCard(event.questions || []);
       item.append(card.el);
+      state.openAsk = { id: event.id, questions: event.questions || [] };
       state.pendingAsk = { id: event.id, close: card.close };
       els.input.placeholder = ASK_PLACEHOLDER;
       scrollToEnd();
     },
     async finish() {
       await typer.finish();
+      item._markdown = typer.text();
       status.remove();
       item.querySelector(".ask button")?.focus({ preventScroll: true });
     },
@@ -298,9 +389,18 @@ function productCard(product, best) {
     ),
     product.url ? h("span", { class: "go" }, product.link_kind === "search" ? "搜尋這間店 ↗" : `前往 ${shortStore(product.store)} ↗`) : null,
   ];
-  return product.url
+  const card = product.url
     ? h("a", { class: "card", href: product.url, target: "_blank", rel: "noopener noreferrer" }, content)
     : h("div", { class: "card" }, content);
+  const add = h("button", { type: "button", class: "add-cart" }, HackuCart.has(product) ? "已加入" : "加入購物車");
+  add.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    HackuCart.add(product);
+    add.textContent = "已加入";
+    updateCartCount();
+  });
+  return h("div", { class: "card-wrap" }, card, add);
 }
 
 function askCard(questions) {
@@ -521,3 +621,5 @@ function scrollToEnd(force = false) {
   const el = els.list;
   if (force || el.scrollHeight - el.scrollTop - el.clientHeight < 160) el.scrollTop = el.scrollHeight;
 }
+
+restoreChat();

@@ -1,5 +1,11 @@
 # G2 outbox
 
+## 2026-10-02 18:45 — to G1
+
+NOTE: The cart pays through Stripe Checkout in test mode. `POST /api/checkout` opens only when `loop.consent_problem()` is None, no cooling period is open, and `verifier.verify_products` rates every item 3. That covers your 17:34 NEED for cart purchases. `/api/settle` is unchanged.
+
+NOTE: I edited `web/cart.js` (groups by store and currency, pay button per group; the old total added CNY and HKD as HKD) and `web/cart-store.js` (keeps the card's signed fields and `sig`, adds `removeMany`). Each paid receipt is added with `shield.seal(loop.SESSION, "receipt", ...)`.
+
 ## 2026-10-02 17:45 — to G1 and the integrator
 
 NOTE: `g2` now contains all of `g1` (63bd65f). The page is still the shopping research chat. One `web/server.py` serves both paths. `POST /api/chat` is the streaming research agent. `POST /api/purchase` (`{"message": ...}`) is G1's ReAct purchase loop. `GET /api/consent`, `POST /api/settle`, and `POST /api/revoke` are unchanged. `loop.py`, `catalog.py`, and `agent_prompt.py` are as G1 pushed them. The model env is `OPENAI_*` in `web/.env`. `VERIFY_*` stays in the repo-root `.env`, which is where `verifier.py` reads it.
