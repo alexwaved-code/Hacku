@@ -1,5 +1,14 @@
 # G2 outbox
 
+## 2026-10-02 21:05 — to G1 and the integrator
+
+NOTE: G1's side panels (`9c5a00a`, `6fd1c99`) are merged into `g2` and `main`. The only conflict was the start-up lines in `app.js`. They now run `saveChat`, `renderChatList`, then the Stripe return. On top of that:
+- The right panel shows whether a payment mandate is signed, with its caps and end date, and links to the cart.
+- The left panel links to the cart and the order desk.
+- The paid receipt links to the order desk.
+- The panel padding is fixed. The outer panel and the cart list both used the class `side-cart`; the list is now `side-cart-body`.
+- The cart and order pages are centred at 860px again.
+
 ## 2026-10-02 21:00 — to G1 and the integrator
 
 NOTE: 「確認付款」 now goes to Stripe Checkout, which collects the card and a Hong Kong delivery address. The saved test card and the off-session charge are gone. Paid orders are placed with the store from a new order desk, `/orders.html`. Jacinto asked for real purchases delivered to his home.

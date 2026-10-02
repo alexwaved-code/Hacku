@@ -1,3 +1,9 @@
+.header-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 .fulfil {
   display: flex;
   flex-direction: column;

@@ -8,46 +8,57 @@
   </head>
   <body>
     <div class="app">
-    <aside class="side side-chats">
-      <h1>購物助理</h1>
-      <button type="button" id="new-chat" class="pill new-chat">新對話</button>
-      <h2>對話</h2>
-      <ul id="chat-list" class="chat-list"></ul>
-    </aside>
-    <main class="chat">
-      <header class="chat-header">
-        <h1 class="narrow-title">購物助理</h1>
-        <div class="header-actions">
-          <button type="button" id="new-chat-narrow" class="pill">新對話</button>
-          <a id="cart-link" class="pill" href="cart.html">購物車<span id="cart-count"></span></a>
+      <aside class="side side-chats">
+        <div class="brand">
+          <h1>購物助理</h1>
+          <p class="sub">上網查真實商品和價錢。說「幫我買」，助理準備訂單，你按確認才付款。</p>
         </div>
-      </header>
-      <ol id="messages" class="messages" aria-live="polite"></ol>
-      <footer class="dock">
-        <div class="examples" id="examples">
-          <button type="button" class="pill" data-prompt="HK$500 以內，通勤用的降噪耳機">降噪耳機 HK$500 內</button>
-          <button type="button" class="pill" data-prompt="可以充手提電腦的行動電源">充手提電腦的行動電源</button>
-          <button type="button" class="pill" data-prompt="淘寶上的 iPhone 16 手機殼">淘寶手機殼</button>
-        </div>
-        <form id="composer" class="composer">
-          <label class="sr-only" for="message">訊息</label>
-          <input id="message" name="message" type="text" autocomplete="off" placeholder="想買什麼，或想問什麼？" />
-          <button type="submit" id="send">送出</button>
-          <button type="button" id="stop" hidden>停止</button>
-        </form>
-      </footer>
-    </main>
-    <aside class="side side-cart">
-      <h2 class="cart-mark" aria-label="購物車">
-        <svg viewBox="0 0 24 24" aria-hidden="true">
-          <path d="M6 6h15l-1.6 9H8L6 6zm0 0L5 3H2" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
-          <circle cx="9" cy="20" r="1.4" fill="currentColor"></circle>
-          <circle cx="18" cy="20" r="1.4" fill="currentColor"></circle>
-        </svg>
-      </h2>
-      <div id="side-cart" class="side-cart"></div>
-      <p id="side-total" class="side-total"></p>
-    </aside>
+        <button type="button" id="new-chat" class="pill new-chat">＋ 新對話</button>
+        <h2>對話紀錄</h2>
+        <ul id="chat-list" class="chat-list"></ul>
+        <nav class="side-links" aria-label="其他頁面">
+          <a href="cart.html">購物車與付款授權</a>
+          <a href="orders.html">代購訂單</a>
+        </nav>
+      </aside>
+      <main class="chat">
+        <header class="chat-header">
+          <h1 class="narrow-title">購物助理</h1>
+          <div class="header-actions">
+            <button type="button" id="new-chat-narrow" class="pill">新對話</button>
+            <a id="cart-link" class="pill" href="cart.html">購物車<span id="cart-count"></span></a>
+          </div>
+        </header>
+        <ol id="messages" class="messages" aria-live="polite"></ol>
+        <footer class="dock">
+          <div class="examples" id="examples">
+            <button type="button" class="pill" data-prompt="HK$500 以內，通勤用的降噪耳機">降噪耳機 HK$500 內</button>
+            <button type="button" class="pill" data-prompt="可以充手提電腦的行動電源">充手提電腦的行動電源</button>
+            <button type="button" class="pill" data-prompt="淘寶上的 iPhone 16 手機殼">淘寶手機殼</button>
+          </div>
+          <form id="composer" class="composer">
+            <label class="sr-only" for="message">訊息</label>
+            <input id="message" name="message" type="text" autocomplete="off" placeholder="想買什麼，或想問什麼？" />
+            <button type="submit" id="send">送出</button>
+            <button type="button" id="stop" hidden>停止</button>
+          </form>
+        </footer>
+      </main>
+      <aside class="side side-cart">
+        <h2 class="side-cart-title">
+          <span class="cart-mark" aria-hidden="true">
+            <svg viewBox="0 0 24 24">
+              <path d="M6 6h15l-1.6 9H8L6 6zm0 0L5 3H2" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+              <circle cx="9" cy="20" r="1.4" fill="currentColor"></circle>
+              <circle cx="18" cy="20" r="1.4" fill="currentColor"></circle>
+            </svg>
+          </span>
+          購物車
+        </h2>
+        <a id="side-mandate" class="side-mandate" href="cart.html" hidden></a>
+        <div id="side-cart" class="side-cart-body"></div>
+        <p id="side-total" class="side-total"></p>
+      </aside>
     </div>
     <script src="money.js"></script>
     <script src="cart-store.js"></script>

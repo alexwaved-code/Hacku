@@ -173,3 +173,13 @@ Browser check, test mode:
 - 「確認付款」 went to Stripe Checkout. It was paid with 4242 and a Kowloon test address. The chat showed 「已付款 HK$48」, 「送到：Chan TaiMan，1 Test Road，Flat A, 5/F，Mong Kok，Kowloon」, and record `6a259d899976`.
 - The order desk listed the order with the address. 「助理代填購物車」 reached 「購物車已備好」 in 6 seconds: Street Value's checkout showed the cable at HKD 48.00, Hong Kong, Kowloon, and the name, address, phone, and email filled in. Nothing was paid on the store.
 - 「標成已下單」 with TEST-1001, then 「退款」. Stripe refunded it, and the order showed 「已退款」.
+
+## 2026-10-02 21:05
+
+G1's side panels are merged: past chats on the left, the cart on the right.
+
+- The right panel shows the payment mandate: 「已授權助理付款」 with the caps and the end date, or 「還沒有付款授權」 with a link to sign one.
+- The left panel has a short description and links to the cart and the order desk. A paid receipt links to the order desk.
+- On wide screens the chat has no empty header bar. The cart and order pages are centred at 860px.
+- The order desk links back to the chat.
+- Removing an item in the right panel also clears its quantity on the product card.
