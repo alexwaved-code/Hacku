@@ -292,3 +292,11 @@ Five product cards on one row. After the agent finishes writing, the feed jumps 
 
 A live search for USB-C cables under HK$80: five cards in one row (217×327), the reply and follow-ups on screen, scroll gap 0.
 
+## 2026-10-03 02:12
+
+Quick-action chips stay under the input. The dock hint and the welcome subtitle are gone.
+
+**Checked**
+
+New chat: title and examples only. Five chips under the composer (reorder, orders, example searches). No 「即時上網比價」 line.
+

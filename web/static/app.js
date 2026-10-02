@@ -37,6 +37,7 @@ const cardPainters = new Set();
 let cartSeen = null;
 let chatsSeen = null;
 let lastMandate = null;
+let lastOrders = [];
 const comparing = new Map();
 const MAX_COMPARE = 3;
 const NUMERALS = { 一: 1, 二: 2, 兩: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9, 十: 10, first: 1, second: 2, third: 3, fourth: 4, fifth: 5 };
@@ -281,30 +282,50 @@ function renderCapMeter(items) {
   meter.querySelector(".cap-text").textContent = over ? t("capOver", HackuMoney.text(cap, code)) : t("capOk", HackuMoney.text(cap - total, code));
 }
 
-function quickActions() {
-  const box = h("div", { class: "quick" });
-  const chip = (icon, label, prompt) => h("button", { type: "button", class: "quick-chip", onclick: () => send(prompt) }, icon, h("span", {}, label));
-  const paint = (orders) => {
-    const chips = [];
-    const count = HackuCart.count();
-    if (count) chips.push(chip(cartIcon(), t("quickCheckout", count), t("quickCheckoutAsk")));
-    const names = [];
-    for (const order of orders) {
-      const name = order.items?.[0]?.name;
-      if (name && !names.includes(name)) names.push(name);
-    }
-    for (const name of names.slice(0, 2)) {
-      chips.push(chip(lineIcon("M4 12a8 8 0 0 1 14-5.3M20 4v4h-4M20 12a8 8 0 0 1-14 5.3M4 20v-4h4"), t("reorder", name.length > 22 ? `${name.slice(0, 22)}…` : name), t("reorderAsk", name)));
-    }
-    if (orders.length) chips.push(chip(lineIcon("M4 8l8-4 8 4v8l-8 4-8-4V8zM4 8l8 4 8-4M12 12v8"), t("quickOrders"), t("quickOrders")));
-    box.replaceChildren(...(chips.length ? [h("p", { class: "quick-title" }, t("quickTitle")), h("div", { class: "quick-row" }, chips)] : []));
+function actionChip(icon, label, prompt) {
+  return h("button", { type: "button", class: "quick-chip", onclick: () => send(prompt) }, icon, h("span", {}, label));
+}
+
+function nextActions(extra = []) {
+  const items = [];
+  const seen = new Set();
+  const add = (icon, label, prompt) => {
+    if (!label || !prompt || seen.has(prompt) || items.length >= 5) return;
+    seen.add(prompt);
+    items.push(actionChip(icon, label, prompt));
   };
-  paint([]);
-  fetch("/api/orders")
+  for (const [label, prompt] of extra) add(null, label, prompt);
+  const count = HackuCart.count();
+  if (count) add(cartIcon(), t("quickCheckout", count), t("quickCheckoutAsk"));
+  const names = [];
+  for (const order of lastOrders) {
+    const name = order.items?.[0]?.name;
+    if (name && !names.includes(name)) names.push(name);
+  }
+  for (const name of names.slice(0, 2)) {
+    add(lineIcon("M4 12a8 8 0 0 1 14-5.3M20 4v4h-4M20 12a8 8 0 0 1-14 5.3M4 20v-4h4"), t("reorder", name.length > 22 ? `${name.slice(0, 22)}…` : name), t("reorderAsk", name));
+  }
+  if (lastOrders.length) add(lineIcon("M4 8l8-4 8 4v8l-8 4-8-4V8zM4 8l8 4 8-4M12 12v8"), t("quickOrders"), t("quickOrders"));
+  for (const [title, prompt] of t("examples")) add(null, title, prompt);
+  return items;
+}
+
+function renderDockQuick() {
+  const box = document.querySelector("#dock-quick");
+  if (!box) return;
+  box.replaceChildren(h("div", { class: "quick-row" }, nextActions()));
+}
+
+function loadOrders() {
+  return fetch("/api/orders")
     .then((response) => (response.ok ? response.json() : null))
-    .then((data) => paint(Array.isArray(data?.orders) ? data.orders : []))
-    .catch(() => {});
-  return box;
+    .then((data) => {
+      lastOrders = Array.isArray(data?.orders) ? data.orders : [];
+      renderDockQuick();
+    })
+    .catch(() => {
+      renderDockQuick();
+    });
 }
 
 function setupVoice() {
@@ -380,6 +401,7 @@ function setLanguage(lang) {
   renderMandate(lastMandate);
   document.querySelector("#compare-bar")?.remove();
   if (comparing.size) syncCompare();
+  renderDockQuick();
 }
 
 /* ---------- Sending ---------- */
@@ -408,7 +430,7 @@ function takePendingAsk(payload) {
 }
 
 async function runTurn(display, entries) {
-  els.list.querySelectorAll(".follow-ups, .act-retry").forEach((node) => node.remove());
+  els.list.querySelectorAll(".follow-ups, .turn-quick, .act-retry").forEach((node) => node.remove());
   const userItem = appendUser(display);
   const turn = createTurn();
   const base = state.thread.length;
@@ -572,6 +594,7 @@ function updateCartCount() {
     else cardPainters.delete(painter);
   }
   renderSideCart();
+  renderDockQuick();
 }
 
 function renderSideCart() {
@@ -802,9 +825,7 @@ function welcomeItem() {
     { class: "welcome" },
     h("img", { class: "welcome-logo", src: "logo.svg", alt: "" }),
     h("h2", {}, t("welcomeTitle")),
-    h("p", {}, t("welcomeText")),
-    h("div", { class: "examples" }, examples),
-    quickActions()
+    h("div", { class: "examples" }, examples)
   );
 }
 
@@ -1233,16 +1254,9 @@ function createTurn() {
       const retry = h("button", { type: "button", class: "act-btn act-retry", title: t("regenerate") }, retryIcon(), t("regenerate"));
       retry.addEventListener("click", onRetry);
       if (said) item.append(h("div", { class: "turn-actions" }, copy, retry));
-      if (item._products?.length && !state.pendingAsk) {
-        item.append(
-          h(
-            "div",
-            { class: "follow-ups" },
-            t("followUps").map((prompt, index) =>
-              h("button", { type: "button", class: "follow-up", style: `--i:${index}`, onclick: () => send(prompt) }, prompt)
-            )
-          )
-        );
+      if (!state.pendingAsk && item._products?.length) {
+        const chips = nextActions(t("followUps").map((prompt) => [prompt, prompt]));
+        if (chips.length) item.append(h("div", { class: "quick turn-quick" }, h("div", { class: "quick-row" }, chips)));
       }
       scrollToEnd(true);
     },
@@ -1995,3 +2009,4 @@ restoreChat();
 saveChat();
 renderChatList();
 finishStripeReturn();
+loadOrders();

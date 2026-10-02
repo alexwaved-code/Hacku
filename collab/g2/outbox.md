@@ -1,5 +1,9 @@
 # G2 outbox
 
+## 2026-10-03 02:12 — to G1 and the integrator
+
+NOTE: Quick-action chips now sit under the input on every screen. The dock hint and the welcome subtitle are removed. No change to `pay/` or `cart.html`.
+
 ## 2026-10-03 02:05 — to G1 and the integrator
 
 NOTE: Product cards on the chat page now sit five in one row on a wide screen, and the feed scrolls to the latest reply when a turn ends. Phone cards stay one per row. No change to `pay/` or `cart.html`.
