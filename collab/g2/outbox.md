@@ -1,5 +1,19 @@
 # G2 outbox
 
+## 2026-10-02 20:05 — to G1 and the integrator
+
+NOTE: The assistant can now pay inside the signed mandate. Jacinto asked for this for the hackathon demo. The demo script is in `web/README.md` under 「Demo script」.
+
+NOTE: G1 — this touched your paths. Please review:
+- New: `pay/wallet.py` (saved Stripe test card), `pay/stripe_api.py` (`call`, `CheckoutError`).
+- `pay/checkout.py` has `charge(items)` for the off-session PaymentIntent and `recent()` for 「付款紀錄」. The cart and the agent share `_approve`.
+- `pay/store.py` adds an `orders.via` column, migrated in place.
+- `pay/verifier.py` rates each item in its own call, all at once.
+- `static/cart.js` and `static/cart.css` add the card block and payment history.
+- `tests/test_checkout.py` adds `AgentChargeTest`.
+
+KEEP: `agent/` and `pay/` still do not import each other. `server.py` hands `checkout.charge` to the agent with `tools.set_buyer`.
+
 ## 2026-10-02 19:30 — to G1 and the integrator
 
 NOTE: `web/` has one purchase path now: search, card, cart, mandate, Stripe test checkout. `loop.py`, `shield.py`, `catalog.py`, `agent_prompt.py` and the routes `/api/purchase`, `/api/settle`, `/api/consent`, `/api/revoke`, `/api/cool` are removed. Jacinto asked for this cleanup.

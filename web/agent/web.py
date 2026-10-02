@@ -13,6 +13,8 @@ from html.parser import HTMLParser
 
 import config
 
+from . import cache
+
 USER_AGENT = (
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/128.0 Safari/537.36"
@@ -21,6 +23,8 @@ SERPER_URL = "https://google.serper.dev"
 TIMEOUT = 15
 MAX_BYTES = 2_500_000
 TEXT_LIMIT = 2500
+SEARCH_MAX_AGE = 6 * 3600
+PAGE_MAX_AGE = 2 * 3600
 HKT = timezone(timedelta(hours=8))
 REGIONS = {
     "hk": ("hk", "zh-tw", "HKD"),
@@ -131,6 +135,10 @@ def _serper(kind, query, num, region="hk"):
     if not key:
         raise FetchError("Web search is not set up. Add SERPER_API_KEY to web/.env.")
     gl, hl, _ = REGIONS[region_code(region)]
+    cache_key = json.dumps([kind, query, gl, hl, num], ensure_ascii=False)
+    hit = cache.get("serper", cache_key, SEARCH_MAX_AGE)
+    if hit is not None:
+        return hit
     body = json.dumps({"q": query, "gl": gl, "hl": hl, "num": num}).encode("utf-8")
     request = urllib.request.Request(
         f"{SERPER_URL}/{kind}",
@@ -140,7 +148,7 @@ def _serper(kind, query, num, region="hk"):
     )
     try:
         with urllib.request.urlopen(request, timeout=TIMEOUT) as response:
-            return json.loads(response.read().decode("utf-8"))
+            data = json.loads(response.read().decode("utf-8"))
     except urllib.error.HTTPError as error:
         if error.code in (401, 403):
             raise FetchError("The search key was refused. Check SERPER_API_KEY.") from error
@@ -149,6 +157,8 @@ def _serper(kind, query, num, region="hk"):
         raise FetchError(f"Search answered {error.code}.") from error
     except (urllib.error.URLError, TimeoutError, OSError, json.JSONDecodeError) as error:
         raise FetchError("Search did not respond.") from error
+    cache.put("serper", cache_key, data)
+    return data
 
 
 def _price(value, region="hk"):
@@ -188,6 +198,15 @@ def _strip_tracking(link):
 
 def read_page(url):
     url = str(url or "").strip()
+    hit = cache.get("page", url, PAGE_MAX_AGE)
+    if hit is not None:
+        return hit
+    page = _read_page(url)
+    cache.put("page", url, page)
+    return page
+
+
+def _read_page(url):
     page, final_url = _get(url)
     meta = _Meta()
     meta.feed(page)

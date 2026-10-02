@@ -10,12 +10,17 @@ import traceback
 
 import config
 import llm
-from agent import harness
-from pay import checkout, mandate
+from agent import harness, tools
+from pay import checkout, mandate, wallet
 
 MAX_BODY = 600_000
 MAX_MESSAGES = 80
-PAY_ROUTES = ("/api/checkout", "/api/mandate", "/api/mandate/revoke")
+PAY_ROUTES = ("/api/checkout", "/api/mandate", "/api/mandate/revoke", "/api/card", "/api/card/forget")
+GET_ROUTES = {
+    "/api/mandate": mandate.view,
+    "/api/card": wallet.view,
+    "/api/orders": checkout.recent,
+}
 
 
 class Handler(SimpleHTTPRequestHandler):
@@ -43,8 +48,8 @@ class Handler(SimpleHTTPRequestHandler):
             session = (parse_qs(url.query).get("session") or [""])[0]
             self.pay_reply(lambda: checkout.status(session))
             return
-        if url.path == "/api/mandate":
-            self.send_json(200, mandate.view())
+        if url.path in GET_ROUTES:
+            self.pay_reply(GET_ROUTES[url.path])
             return
         if self.is_hidden():
             self.send_error(404)
@@ -126,6 +131,10 @@ class Handler(SimpleHTTPRequestHandler):
             return checkout.create(payload.get("items"))
         if path == "/api/mandate/revoke":
             return mandate.revoke()
+        if path == "/api/card":
+            return wallet.save_test_card()
+        if path == "/api/card/forget":
+            return wallet.forget()
         try:
             return mandate.issue(payload.get("caps"), payload.get("days"))
         except mandate.MandateError as error:
@@ -160,6 +169,16 @@ class Handler(SimpleHTTPRequestHandler):
         self.send_header("Cache-Control", "no-store")
         self.end_headers()
         self.wfile.write(raw)
+
+
+def agent_buy(items):
+    try:
+        return checkout.charge(items)
+    except checkout.CheckoutError as error:
+        return {"paid": False, "reason": str(error)}
+
+
+tools.set_buyer(agent_buy)
 
 
 def normalize_messages(raw):

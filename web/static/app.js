@@ -263,6 +263,7 @@ function snapshotView() {
         kind: "agent",
         text: item._markdown || item.querySelector(".text")?.innerText || "",
         products: item._products || [],
+        receipts: item._receipts || [],
       };
     }
     return { kind: "note", text: item.textContent };
@@ -275,9 +276,11 @@ function appendSavedAgent(entry) {
   const cards = h("div", { class: "cards" });
   const products = Array.isArray(entry.products) ? entry.products : [];
   if (products.length) cards.append(...products.map((product, index) => productCard(product, index === 0)));
-  const item = h("li", { class: "message agent turn" }, cards, text);
+  const receipts = Array.isArray(entry.receipts) ? entry.receipts : [];
+  const item = h("li", { class: "message agent turn" }, cards, ...receipts.map(receiptCard), text);
   item._markdown = entry.text || "";
   item._products = products;
+  item._receipts = receipts;
   els.list.append(item);
 }
 
@@ -293,8 +296,10 @@ function appendUser(text) {
 function createTurn() {
   const status = h("p", { class: "status" }, h("span", { class: "spinner", "aria-hidden": "true" }), h("span", {}, "思考中…"));
   const cards = h("div", { class: "cards" });
+  const receipts = h("div", { class: "receipts" });
   const text = h("div", { class: "text" });
-  const item = h("li", { class: "message agent turn" }, status, cards, text);
+  const item = h("li", { class: "message agent turn" }, status, cards, receipts, text);
+  item._receipts = [];
   els.list.append(item);
   scrollToEnd(true);
 
@@ -328,6 +333,12 @@ function createTurn() {
       if (event.ui?.kind === "products") {
         item._products = event.ui.items;
         cards.replaceChildren(...event.ui.items.map((product, index) => productCard(product, index === 0)));
+        scrollToEnd();
+      }
+      if (event.ui?.kind === "receipt") {
+        item._receipts.push(event.ui);
+        receipts.append(receiptCard(event.ui));
+        if (event.ui.paid) updateCartCount();
         scrollToEnd();
       }
     },
@@ -401,6 +412,29 @@ function productCard(product, best) {
     updateCartCount();
   });
   return h("div", { class: "card-wrap" }, card, add);
+}
+
+function receiptCard(receipt) {
+  if (!receipt.paid) {
+    return h(
+      "div",
+      { class: "receipt refused" },
+      h("p", { class: "receipt-title" }, "沒有付款"),
+      h("p", { class: "receipt-line" }, receipt.reason || "付款被拒絕。"),
+      h("a", { class: "receipt-link", href: "cart.html" }, "到購物車調整授權 ↗")
+    );
+  }
+  const items = (receipt.items || []).map((entry) =>
+    h("li", {}, `${entry.name}${entry.qty > 1 ? ` × ${entry.qty}` : ""}`, h("span", { class: "receipt-store" }, entry.store))
+  );
+  return h(
+    "div",
+    { class: "receipt paid" },
+    h("p", { class: "receipt-title" }, `已付款 ${HackuMoney.text(receipt.amount, receipt.currency)}`),
+    h("ul", { class: "receipt-items" }, items),
+    h("p", { class: "receipt-line" }, `${receipt.card} · Stripe 測試模式，沒有扣真錢`),
+    receipt.hash ? h("p", { class: "receipt-line mono" }, `紀錄 ${receipt.hash.slice(0, 12)}`) : null
+  );
 }
 
 function askCard(questions) {

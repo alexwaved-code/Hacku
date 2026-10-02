@@ -24,7 +24,8 @@ CREATE TABLE IF NOT EXISTS orders (
     items TEXT NOT NULL,
     paid INTEGER NOT NULL DEFAULT 0,
     hash TEXT,
-    created_at TEXT NOT NULL
+    created_at TEXT NOT NULL,
+    via TEXT NOT NULL DEFAULT 'cart'
 );
 CREATE TABLE IF NOT EXISTS settings (
     key TEXT PRIMARY KEY,
@@ -50,6 +51,9 @@ def db():
         conn.row_factory = sqlite3.Row
         try:
             conn.executescript(SCHEMA)
+            columns = {row["name"] for row in conn.execute("PRAGMA table_info(orders)")}
+            if "via" not in columns:
+                conn.execute("ALTER TABLE orders ADD COLUMN via TEXT NOT NULL DEFAULT 'cart'")
             yield conn
             conn.commit()
         finally:
