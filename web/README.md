@@ -58,4 +58,4 @@ Do not point at `127.0.0.1:8765` from another group's service. That proxy is onl
 
 `POST /api/chat` with `{ "messages": [ { "role": "user", "content": "…" } ] }`.
 
-The response is SSE: `data: {"delta":"…"}` then `data: {"done":true}`.
+The response is SSE (`text/event-stream`): `data: {"delta":"…"}` then `data: {"done":true}`. The page types each delta as it arrives.

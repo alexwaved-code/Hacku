@@ -3,6 +3,7 @@ from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 import json
 import os
+import socket
 import urllib.error
 import urllib.request
 
@@ -31,8 +32,17 @@ MODEL = os.environ.get("OPENAI_MODEL", "deepseek-v4.1-flash")
 
 
 class Handler(SimpleHTTPRequestHandler):
+    protocol_version = "HTTP/1.1"
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=str(ROOT), **kwargs)
+
+    def setup(self):
+        super().setup()
+        try:
+            self.connection.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+        except OSError:
+            pass
 
     def log_message(self, format, *args):
         message = format % args
@@ -91,9 +101,11 @@ class Handler(SimpleHTTPRequestHandler):
 
         self.send_response(200)
         self.send_header("Content-Type", "text/event-stream; charset=utf-8")
-        self.send_header("Cache-Control", "no-store")
+        self.send_header("Cache-Control", "no-cache, no-store")
+        self.send_header("X-Accel-Buffering", "no")
         self.send_header("Connection", "close")
         self.end_headers()
+        self.wfile.flush()
 
         try:
             while True:
@@ -171,12 +183,16 @@ def read_upstream_error(error):
         return "The model request failed."
     if isinstance(body, dict):
         err = body.get("error")
-        if isinstance(err, dict) and isinstance(err.get("message"), str):
-            return err["message"]
-        if isinstance(err, str):
+        if isinstance(err, dict):
+            for key in ("message", "msg", "detail"):
+                if isinstance(err.get(key), str) and err[key].strip():
+                    return err[key]
+        if isinstance(err, str) and err.strip():
             return err
         if isinstance(body.get("message"), str):
             return body["message"]
+        if isinstance(body.get("msg"), str):
+            return body["msg"]
     return "The model request failed."
 
 

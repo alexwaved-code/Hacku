@@ -22,24 +22,20 @@ composer.addEventListener("submit", async (event) => {
   thread.push({ role: "user", content: text });
   appendMessage("user", text);
   const pending = appendMessage("agent", "Thinking…", true);
+  const typer = createTyper(pending);
   setBusy(true);
 
   try {
-    const reply = await askAgent(thread, (chunk) => {
-      if (pending.classList.contains("pending")) {
-        pending.textContent = "";
-        pending.classList.remove("pending");
-      }
-      pending.textContent += chunk;
-      messages.scrollTop = messages.scrollHeight;
-    });
-    pending.textContent = reply;
-    pending.classList.remove("pending");
+    const reply = await askAgent(thread, (chunk) => typer.push(chunk));
+    const shown = await typer.finish();
+    pending.textContent = shown || reply;
+    pending.classList.remove("pending", "typing");
     thread.push({ role: "assistant", content: reply });
   } catch (error) {
+    typer.cancel();
     const detail = error instanceof Error ? error.message : "Request failed.";
     pending.textContent = detail;
-    pending.classList.remove("pending");
+    pending.classList.remove("pending", "typing");
   } finally {
     setBusy(false);
     input.focus();
@@ -60,6 +56,57 @@ function setBusy(busy) {
   sendButton.disabled = busy;
 }
 
+function createTyper(el) {
+  let queue = "";
+  let shown = "";
+  let timer = null;
+  let cancelled = false;
+
+  function paint() {
+    el.textContent = shown;
+    messages.scrollTop = messages.scrollHeight;
+  }
+
+  function tick() {
+    timer = null;
+    if (cancelled || !queue) return;
+    const ch = queue[0];
+    queue = queue.slice(1);
+    shown += ch;
+    paint();
+    timer = window.setTimeout(tick, ch === "\n" ? 36 : 18);
+  }
+
+  return {
+    push(text) {
+      if (cancelled || !text) return;
+      if (el.classList.contains("pending")) {
+        el.textContent = "";
+        el.classList.remove("pending");
+      }
+      el.classList.add("typing");
+      queue += text;
+      if (timer == null) tick();
+    },
+    async finish() {
+      while (!cancelled && (queue || timer != null)) {
+        await new Promise((resolve) => window.setTimeout(resolve, 20));
+      }
+      el.classList.remove("typing");
+      return shown;
+    },
+    cancel() {
+      cancelled = true;
+      queue = "";
+      if (timer != null) {
+        window.clearTimeout(timer);
+        timer = null;
+      }
+      el.classList.remove("typing");
+    },
+  };
+}
+
 async function askAgent(history, onDelta) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 45000);
@@ -68,7 +115,10 @@ async function askAgent(history, onDelta) {
   try {
     response = await fetch("/api/chat", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "text/event-stream",
+      },
       body: JSON.stringify({
         messages: history.map(({ role, content }) => ({ role, content })),
       }),
@@ -85,13 +135,24 @@ async function askAgent(history, onDelta) {
   const type = response.headers.get("content-type") || "";
   if (!type.includes("text/event-stream")) {
     clearTimeout(timer);
+    const raw = await response.text();
+    if (raw.includes("data:")) {
+      return readSseText(raw, onDelta);
+    }
     let payload = {};
     try {
-      payload = await response.json();
+      payload = JSON.parse(raw);
     } catch {
       payload = {};
     }
-    throw new Error(payload.error || "The model request failed.");
+    if (typeof payload.reply === "string" && payload.reply.trim()) {
+      const reply = payload.reply.trim();
+      onDelta(reply);
+      return reply;
+    }
+    throw new Error(
+      readJsonError(payload) || raw.trim().slice(0, 180) || `The model request failed (${response.status}).`
+    );
   }
 
   if (!response.body) {
@@ -130,6 +191,35 @@ async function askAgent(history, onDelta) {
     throw new Error("The model returned an empty reply.");
   }
   return reply.trim();
+}
+
+function readSseText(raw, onDelta) {
+  let reply = "";
+  for (const part of raw.split("\n\n")) {
+    const result = readSseData(part);
+    if (!result) continue;
+    if (result.error) throw new Error(result.error);
+    if (result.delta) {
+      reply += result.delta;
+      onDelta(result.delta);
+    }
+  }
+  if (!reply.trim()) {
+    throw new Error("The model returned an empty reply.");
+  }
+  return reply.trim();
+}
+
+function readJsonError(payload) {
+  if (!payload || typeof payload !== "object") return "";
+  if (typeof payload.error === "string") return payload.error;
+  const err = payload.error;
+  if (err && typeof err === "object") {
+    if (typeof err.message === "string") return err.message;
+    if (typeof err.msg === "string") return err.msg;
+  }
+  if (typeof payload.message === "string") return payload.message;
+  return "";
 }
 
 function readSseData(block) {

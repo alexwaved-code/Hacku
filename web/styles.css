@@ -85,6 +85,18 @@ body {
   color: var(--muted);
 }
 
+.message.typing::after {
+  content: "▍";
+  margin-left: 1px;
+  animation: caret 1s step-end infinite;
+}
+
+@keyframes caret {
+  50% {
+    opacity: 0;
+  }
+}
+
 .composer {
   display: flex;
   gap: 8px;
