@@ -202,15 +202,25 @@ function renderSideCart() {
   }
   const list = h("ul", { class: "side-cart-list" });
   for (const item of items) {
-    const remove = h("button", { type: "button", class: "pill" }, "移除");
-    remove.addEventListener("click", () => {
-      HackuCart.remove(item.id);
-      updateCartCount();
-    });
     const price = HackuMoney.text(item.price, item.currency) || "價格見商店";
     const picture = item.image
       ? h("img", { class: "side-cart-pic", src: item.image, alt: "", referrerpolicy: "no-referrer" })
       : h("span", { class: "side-cart-pic missing", "aria-hidden": "true" });
+    const minus = h("button", { type: "button", class: "qty-btn", "aria-label": "減一個" }, "−");
+    const plus = h("button", { type: "button", class: "qty-btn", "aria-label": "加一個" }, "+");
+    const clear = h("button", { type: "button", class: "qty-btn", "aria-label": "全部移除" }, trashIcon());
+    minus.addEventListener("click", () => {
+      HackuCart.changeQty(item.id, -1);
+      updateCartCount();
+    });
+    plus.addEventListener("click", () => {
+      HackuCart.changeQty(item.id, 1);
+      updateCartCount();
+    });
+    clear.addEventListener("click", () => {
+      HackuCart.remove(item.id);
+      updateCartCount();
+    });
     list.append(
       h(
         "li",
@@ -220,19 +230,21 @@ function renderSideCart() {
           "div",
           {},
           h("p", { class: "side-cart-name" }, item.name),
-          h("p", { class: "side-cart-meta" }, `${item.store || "商店"} · x${item.qty || 1} · ${price}`),
-          remove
+          h("p", { class: "side-cart-meta" }, `${item.store || "商店"} · ${price}`),
+          h("div", { class: "qty-step" }, minus, h("span", { class: "qty-count" }, `x${item.qty || 1}`), plus, clear)
         )
       )
     );
   }
-  els.sideCart.append(list, h("a", { class: "pill side-checkout", href: "cart.html" }, "去結帳"));
+  els.sideCart.append(list);
   renderSideTotal(items);
 }
 
 function renderSideTotal(items) {
   const total = document.querySelector("#side-total");
   if (!total) return;
+  const pay = document.querySelector("#side-pay");
+  if (pay) pay.hidden = !items.length;
   if (!items.length) {
     total.textContent = "";
     return;
@@ -297,7 +309,9 @@ function loadChats() {
 
 function renderChatList() {
   if (!els.chatList) return;
-  const chats = loadChats();
+  const chats = loadChats()
+    .slice()
+    .sort((a, b) => Number(!!b.pinned) - Number(!!a.pinned) || (b.updated || 0) - (a.updated || 0));
   els.chatList.replaceChildren();
   if (!chats.length) {
     els.chatList.append(h("li", { class: "side-empty" }, "還沒有對話。"));
@@ -305,10 +319,61 @@ function renderChatList() {
   }
   const current = currentChatId();
   for (const chat of chats) {
-    const button = h("button", { type: "button", class: chat.id === current ? "current" : "" }, chat.title || "對話");
+    const button = h("button", { type: "button", class: "chat-open" }, chat.title || "對話");
     button.addEventListener("click", () => openChat(chat.id));
-    els.chatList.append(h("li", {}, button));
+    const rename = h("button", { type: "button", class: "icon-btn", "aria-label": "重新命名" }, pencilIcon());
+    rename.addEventListener("click", (event) => {
+      event.stopPropagation();
+      startRename(chat.id, button);
+    });
+    const pin = h(
+      "button",
+      { type: "button", class: chat.pinned ? "icon-btn pinned" : "icon-btn", "aria-label": chat.pinned ? "取消釘選" : "釘選" },
+      pinIcon()
+    );
+    pin.addEventListener("click", (event) => {
+      event.stopPropagation();
+      togglePin(chat.id);
+    });
+    const bar = h("div", { class: chat.id === current ? "chat-bar current" : "chat-bar" }, button, rename, pin);
+    els.chatList.append(h("li", { class: "chat-row", "data-id": chat.id }, bar));
   }
+}
+
+function startRename(id, button) {
+  const chat = loadChats().find((item) => item.id === id);
+  if (!chat) return;
+  const input = h("input", { class: "chat-rename", value: chat.title || "", "aria-label": "對話名稱" });
+  button.replaceWith(input);
+  input.focus();
+  input.select();
+  let done = false;
+  const commit = () => {
+    if (done) return;
+    done = true;
+    const title = input.value.trim().slice(0, 42);
+    if (title) {
+      const chats = loadChats().map((item) => (item.id === id ? { ...item, title, renamed: true } : item));
+      localStorage.setItem(CHATS_KEY, JSON.stringify(chats));
+    }
+    renderChatList();
+  };
+  input.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      commit();
+    } else if (event.key === "Escape") {
+      done = true;
+      renderChatList();
+    }
+  });
+  input.addEventListener("blur", commit);
+}
+
+function togglePin(id) {
+  const chats = loadChats().map((item) => (item.id === id ? { ...item, pinned: !item.pinned } : item));
+  localStorage.setItem(CHATS_KEY, JSON.stringify(chats));
+  renderChatList();
 }
 
 function openChat(id) {
@@ -373,10 +438,13 @@ function saveChat() {
   }
   const title = (view.find((entry) => entry.kind === "user")?.text || "").trim();
   if (!title) return;
+  const previous = loadChats().find((chat) => chat.id === currentChatId());
   const chats = loadChats().filter((chat) => chat.id !== currentChatId());
   chats.unshift({
     id: currentChatId(),
-    title: title.slice(0, 42),
+    title: previous?.renamed ? previous.title : title.slice(0, 42),
+    renamed: !!previous?.renamed,
+    pinned: !!previous?.pinned,
     updated: Date.now(),
     ...payload,
   });
@@ -613,6 +681,33 @@ function editQty(product, qtyBtn, paintQty) {
     }
   });
   input.addEventListener("blur", commit);
+}
+
+function lineIcon(d) {
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("viewBox", "0 0 24 24");
+  svg.setAttribute("aria-hidden", "true");
+  const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+  path.setAttribute("d", d);
+  path.setAttribute("fill", "none");
+  path.setAttribute("stroke", "currentColor");
+  path.setAttribute("stroke-width", "2");
+  path.setAttribute("stroke-linecap", "round");
+  path.setAttribute("stroke-linejoin", "round");
+  svg.append(path);
+  return svg;
+}
+
+function pencilIcon() {
+  return lineIcon("M4 20h4L18 10l-4-4L4 16v4z");
+}
+
+function pinIcon() {
+  return lineIcon("M8 3h8v6l2 2v2H6v-2l2-2V3zM12 13v8");
+}
+
+function trashIcon() {
+  return lineIcon("M5 7h14M9 7V5h6v2M8 7l1 12h6l1-12");
 }
 
 function cartIcon() {

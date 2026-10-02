@@ -83,8 +83,88 @@ button {
   font-size: 18px;
 }
 
+.brand-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.icon-btn,
 .new-chat {
-  width: 100%;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.icon-btn svg,
+.new-chat svg {
+  width: 16px;
+  height: 16px;
+}
+
+.chat-row {
+  margin-bottom: 8px;
+  list-style: none;
+}
+
+.chat-bar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fff;
+  padding: 2px 4px 2px 2px;
+}
+
+.chat-bar.current {
+  border-color: var(--ink);
+}
+
+.icon-btn.pinned {
+  background: transparent;
+  color: var(--ink);
+}
+
+.icon-btn.pinned svg path {
+  fill: currentColor;
+  stroke: currentColor;
+}
+
+.chat-open {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  border: 0;
+  background: transparent;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-bar .icon-btn {
+  width: 24px;
+  height: 24px;
+  border: 0;
+  background: transparent;
+}
+
+.chat-rename {
+  flex: 1;
+  min-width: 0;
+  border: 1px solid var(--ink);
+  border-radius: 8px;
+  padding: 6px 8px;
+  font: inherit;
+  font-size: 13px;
 }
 
 .chat-list,
@@ -97,13 +177,9 @@ button {
   list-style: none;
 }
 
-.chat-list button {
-  width: 100%;
-  margin-bottom: 8px;
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  padding: 8px 10px;
-  background: #fff;
+.chat-list .chat-open {
+  width: auto;
+  padding: 8px 6px 8px 10px;
   color: var(--ink);
   font: inherit;
   font-size: 13px;
@@ -111,8 +187,7 @@ button {
   cursor: pointer;
 }
 
-.chat-list button.current {
-  border-color: var(--ink);
+.chat-bar.current .chat-open {
   font-weight: 650;
 }
 
@@ -155,12 +230,75 @@ button {
   border: 1px solid var(--line);
 }
 
-.side-total {
+.side-pay {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
   margin: 0 0 18px;
   padding-top: 12px;
   border-top: 1px solid var(--line);
+}
+
+.side-total {
+  margin: 0;
   font-size: 16px;
   font-weight: 700;
+}
+
+.pay-icon {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  flex: none;
+  border-radius: 999px;
+  background: var(--user);
+  color: var(--user-text);
+  text-decoration: none;
+}
+
+.pay-icon[hidden] {
+  display: none;
+}
+
+.pay-icon svg {
+  width: 18px;
+  height: 18px;
+}
+
+.qty-step {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.qty-btn {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #fff;
+  color: var(--ink);
+  font: inherit;
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.qty-btn svg {
+  width: 12px;
+  height: 12px;
+}
+
+.qty-count {
+  min-width: 22px;
+  font-size: 12px;
+  font-weight: 700;
+  text-align: center;
 }
 
 .side-cart-name {

@@ -79,6 +79,20 @@ const HackuCart = (() => {
     return next;
   }
 
+  function changeQty(id, delta) {
+    const items = load();
+    const found = items.find((item) => item.id === id);
+    if (!found) return 0;
+    const next = (Number(found.qty) || 1) + delta;
+    if (next < 1) {
+      save(items.filter((item) => item.id !== id));
+      return 0;
+    }
+    found.qty = next;
+    save(items);
+    return next;
+  }
+
   function remove(id) {
     const items = load().filter((item) => item.id !== id);
     save(items);
@@ -96,5 +110,5 @@ const HackuCart = (() => {
     return items;
   }
 
-  return { load, add, has, qtyOf, setQty, remove, removeMany, count, idOf };
+  return { load, add, has, qtyOf, setQty, changeQty, remove, removeMany, count, idOf };
 })();
