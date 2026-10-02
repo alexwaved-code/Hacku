@@ -308,3 +308,11 @@ Quick-action chips come from the model after each reply, from `next_steps` in th
 
 58 unit tests. Live: new chat has no dock chips; after 「你好」 the chips were 搜尋產品 / 查看購物車 / 查訂單狀態; after 「購物車裡有什麼」 they became 搜尋產品 / 查看訂單 / 瀏覽熱門商品.
 
+## 2026-10-03 02:32
+
+Each cart line has 提到. Several lines can sit in the composer at once; send includes their cart lines (`c1`, `c2`…). Adding a product — from a card, the compare sheet, or the agent's `update_cart` — flies a thumbnail into the cart mark.
+
+**Checked**
+
+Two cart lines mentioned together sent 「購物車的 c1「Anker USB-C 充電線 60W」、c2「MOMAX 10000mAh 行動電源」，這幾件怎麼樣？」. Adding Xiaomi and Sony from cards created `.cart-fly` (animation `cart-fly`) and the new rows appeared in the side cart.
+

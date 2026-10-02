@@ -39,6 +39,7 @@ let chatsSeen = null;
 let lastMandate = null;
 let lastQuick = [];
 const comparing = new Map();
+const mentions = new Map();
 const MAX_COMPARE = 3;
 const NUMERALS = { 一: 1, 二: 2, 兩: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9, 十: 10, first: 1, second: 2, third: 3, fourth: 4, fifth: 5 };
 const REF_ZH = /第\s*([一二兩三四五六七八九十]|\d{1,2})\s*(?:個|款|件|張|項)/;
@@ -48,13 +49,13 @@ const PICK_WORDS = /最推薦|推薦|首選|最適合|建議|recommend|best (?:p
 els.form.addEventListener("submit", (event) => {
   event.preventDefault();
   const text = els.input.value;
-  if (!text.trim() || state.busy) return;
+  if (state.busy || (!text.trim() && !mentions.size)) return;
   els.input.value = "";
   els.form.classList.remove("has-text");
-  send(text);
+  send(text, { withMentions: true });
 });
 els.stop.addEventListener("click", () => state.controller?.abort());
-els.input.addEventListener("input", () => els.form.classList.toggle("has-text", !!els.input.value.trim()));
+els.input.addEventListener("input", syncComposer);
 els.newChat.forEach((button) => button.addEventListener("click", resetChat));
 els.list.addEventListener(
   "scroll",
@@ -214,6 +215,7 @@ function openCompare() {
   const column = (product) => {
     const add = h("button", { type: "button", class: "pill compare-add" }, cartIcon(), t("addCart"));
     add.addEventListener("click", () => {
+      flyToCart(add.closest(".compare-col")?.querySelector(".compare-pic") || add, product);
       HackuCart.add(product);
       updateCartCount();
       add.classList.add("done");
@@ -357,15 +359,182 @@ function cartForAgent() {
 }
 
 function applyCartOps(ops) {
+  const added = [];
   for (const op of Array.isArray(ops) ? ops : []) {
-    if (op.op === "add" && op.card) HackuCart.setQty(op.card, HackuCart.qtyOf(op.card) + (Number(op.qty) || 1));
-    else if (op.op === "remove") HackuCart.remove(op.id);
+    if (op.op === "add" && op.card) {
+      added.push(op.card);
+      HackuCart.setQty(op.card, HackuCart.qtyOf(op.card) + (Number(op.qty) || 1));
+    } else if (op.op === "remove") HackuCart.remove(op.id);
     else if (op.op === "set") {
       const item = HackuCart.load().find((entry) => entry.id === op.id);
       if (item) HackuCart.changeQty(op.id, (Number(op.qty) || 1) - (Number(item.qty) || 1));
     }
   }
+  added.forEach((card, index) => setTimeout(() => flyToCart(cardSource(card), card), index * 90));
   updateCartCount();
+}
+
+function syncComposer() {
+  els.form.classList.toggle("has-text", !!(els.input.value.trim() || mentions.size));
+}
+
+function cartLineOf(id) {
+  const index = HackuCart.load().findIndex((item) => item.id === id);
+  return index >= 0 ? `c${index + 1}` : "";
+}
+
+function shortName(name) {
+  const text = String(name || "").trim();
+  return text.length > 16 ? `${text.slice(0, 16)}…` : text;
+}
+
+function mentionPrompt(extra) {
+  const parts = [...mentions.values()]
+    .map((item) => {
+      const line = cartLineOf(item.id);
+      const name = item.name || "";
+      if (!name) return "";
+      return line ? `${line}「${name}」` : `「${name}」`;
+    })
+    .filter(Boolean);
+  const listed = parts.join(t("sep"));
+  const typed = String(extra || "").trim();
+  if (!parts.length) return typed;
+  return typed ? t("mentionWithText", { listed, text: typed }) : t("mentionAsk", listed);
+}
+
+function toggleMention(item) {
+  if (!item?.id) return;
+  if (mentions.has(item.id)) mentions.delete(item.id);
+  else mentions.set(item.id, item);
+  renderMentions();
+  paintMentionRows();
+}
+
+function clearMentions() {
+  mentions.clear();
+  renderMentions();
+  paintMentionRows();
+}
+
+function mentionBar() {
+  let bar = document.querySelector("#mention-bar");
+  if (bar) return bar;
+  bar = h("div", { id: "mention-bar", class: "mention-bar", hidden: true });
+  els.form.before(bar);
+  return bar;
+}
+
+function renderMentions() {
+  const alive = new Set(HackuCart.load().map((item) => item.id));
+  for (const id of [...mentions.keys()]) if (!alive.has(id)) mentions.delete(id);
+  const bar = mentionBar();
+  const items = [...mentions.values()];
+  bar.hidden = !items.length;
+  if (!items.length) {
+    bar.replaceChildren();
+    syncComposer();
+    return;
+  }
+  const ask = h("button", { type: "button", class: "mention-ask" }, t("mentionSend"));
+  ask.addEventListener("click", () => {
+    closeDrawers();
+    send("", { withMentions: true });
+  });
+  const clear = h("button", { type: "button", class: "mention-clear" }, t("mentionClear"));
+  clear.addEventListener("click", clearMentions);
+  bar.replaceChildren(
+    h(
+      "div",
+      { class: "mention-chips" },
+      items.map((item) => {
+        const chip = h(
+          "button",
+          { type: "button", class: "mention-chip", title: item.name },
+          item.image ? h("img", { src: item.image, alt: "", referrerpolicy: "no-referrer", onerror: hideBrokenImage }) : null,
+          h("span", {}, shortName(item.name)),
+          h("span", { class: "mention-x", "aria-hidden": "true" }, "×")
+        );
+        chip.addEventListener("click", () => toggleMention(item));
+        return chip;
+      })
+    ),
+    ask,
+    clear
+  );
+  syncComposer();
+}
+
+function paintMentionRows() {
+  document.querySelectorAll(".side-cart-item[data-id]").forEach((row) => {
+    const on = mentions.has(row.dataset.id);
+    row.classList.toggle("mentioned", on);
+    const btn = row.querySelector(".mention-btn");
+    if (btn) {
+      btn.classList.toggle("on", on);
+      btn.setAttribute("aria-pressed", String(on));
+    }
+  });
+}
+
+function cardSource(product) {
+  const key = HackuCart.idOf(product);
+  const wrap = [...document.querySelectorAll(".card-wrap[data-key]")].find((node) => node.dataset.key === key);
+  return wrap?.querySelector(".pic") || wrap || document.querySelector(".turn:last-child");
+}
+
+function cartTarget() {
+  const mark = document.querySelector(".cart-mark");
+  const box = mark?.getBoundingClientRect();
+  if (box && box.width > 2 && box.bottom > 0 && box.top < window.innerHeight && box.left < window.innerWidth) return mark;
+  return document.querySelector("#cart-link") || mark;
+}
+
+function pulseCart() {
+  for (const node of [document.querySelector(".cart-mark"), document.querySelector("#side-count"), document.querySelector("#cart-link")]) {
+    if (!node) continue;
+    node.classList.remove("pulse");
+    void node.offsetWidth;
+    node.classList.add("pulse");
+  }
+}
+
+function flyToCart(source, product) {
+  const target = cartTarget();
+  const from = source?.getBoundingClientRect?.();
+  const to = target?.getBoundingClientRect?.();
+  if (!from || !to || from.width < 2 || to.width < 2 || window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    pulseCart();
+    return;
+  }
+  const ghost = document.createElement("div");
+  ghost.className = "cart-fly";
+  ghost.setAttribute("aria-hidden", "true");
+  if (product?.image) {
+    const pic = document.createElement("img");
+    pic.src = product.image;
+    pic.alt = "";
+    pic.referrerPolicy = "no-referrer";
+    ghost.append(pic);
+  } else ghost.append(cartIcon());
+  const size = Math.max(36, Math.min(56, from.width, from.height));
+  const x0 = from.left + from.width / 2;
+  const y0 = from.top + from.height / 2;
+  ghost.style.left = `${x0 - size / 2}px`;
+  ghost.style.top = `${y0 - size / 2}px`;
+  ghost.style.width = `${size}px`;
+  ghost.style.height = `${size}px`;
+  ghost.style.setProperty("--dx", `${to.left + to.width / 2 - x0}px`);
+  ghost.style.setProperty("--dy", `${to.top + to.height / 2 - y0}px`);
+  document.body.append(ghost);
+  ghost.addEventListener(
+    "animationend",
+    () => {
+      ghost.remove();
+      pulseCart();
+    },
+    { once: true }
+  );
 }
 
 function setLanguage(lang) {
@@ -388,11 +557,18 @@ function setLanguage(lang) {
 
 /* ---------- Sending ---------- */
 
-function send(text) {
-  text = String(text || "").trim();
-  if (!text || state.busy) return;
-  const reply = takePendingAsk({ user_reply: text });
-  runTurn(text, [reply || { role: "user", content: text }]);
+function send(text, opts = {}) {
+  if (state.busy) return;
+  let message = String(text || "").trim();
+  if (opts.withMentions) message = mentionPrompt(message);
+  if (!message) return;
+  if (opts.withMentions) {
+    mentions.clear();
+    renderMentions();
+    paintMentionRows();
+  }
+  const reply = takePendingAsk({ user_reply: message });
+  runTurn(message, [reply || { role: "user", content: message }]);
 }
 
 function answerAsk(payload, display) {
@@ -593,13 +769,7 @@ function renderSideCart() {
     badge.hidden = !count;
     badge.textContent = String(count);
   }
-  if (grew) {
-    for (const node of [document.querySelector(".cart-mark"), badge]) {
-      node?.classList.remove("pulse");
-      void node?.offsetWidth;
-      node?.classList.add("pulse");
-    }
-  }
+  if (grew) pulseCart();
   els.sideCart.replaceChildren();
   if (!items.length) {
     els.sideCart.append(
@@ -612,12 +782,14 @@ function renderSideCart() {
       )
     );
     renderSideTotal(items);
+    renderMentions();
     return;
   }
   const list = h("ul", { class: "side-cart-list" });
   for (const item of items) list.append(sideCartItem(item, fresh.includes(item.id)));
   els.sideCart.append(list);
   renderSideTotal(items);
+  renderMentions();
 }
 
 function sideCartItem(item, fresh) {
@@ -629,7 +801,23 @@ function sideCartItem(item, fresh) {
   const name = item.url
     ? h("a", { class: "side-cart-name", href: item.url, target: "_blank", rel: "noopener noreferrer", title: item.name }, item.name)
     : h("p", { class: "side-cart-name", title: item.name }, item.name);
-  const row = h("li", { class: fresh ? "side-cart-item fresh" : "side-cart-item" });
+  const row = h("li", {
+    class: `${fresh ? "side-cart-item fresh" : "side-cart-item"}${mentions.has(item.id) ? " mentioned" : ""}`,
+    "data-id": item.id,
+  });
+  const mention = h(
+    "button",
+    {
+      type: "button",
+      class: mentions.has(item.id) ? "mention-btn on" : "mention-btn",
+      title: t("mentionTitle"),
+      "aria-label": t("mentionTitle"),
+      "aria-pressed": String(mentions.has(item.id)),
+    },
+    lineIcon("M5 6h14v9H8l-3 3V6z"),
+    h("span", {}, t("mention"))
+  );
+  mention.addEventListener("click", () => toggleMention(item));
   const change = (delta) => {
     if (qty + delta < 1) {
       row.classList.add("leaving");
@@ -655,7 +843,7 @@ function sideCartItem(item, fresh) {
     h(
       "div",
       { class: "side-cart-body" },
-      name,
+      h("div", { class: "side-cart-top" }, name, mention),
       h("p", { class: "side-cart-meta" }, item.store || t("store")),
       h(
         "div",
@@ -823,6 +1011,7 @@ function resetChat() {
   sessionStorage.setItem(CURRENT_KEY, crypto.randomUUID());
   sessionStorage.removeItem(CHAT_KEY);
   setQuick([]);
+  clearMentions();
   els.list.replaceChildren(welcomeItem());
   renderChatList();
   closeDrawers();
@@ -999,6 +1188,7 @@ function openChat(id) {
     CHAT_KEY,
     JSON.stringify({ thread: chat.thread || [], view: chat.view || [], openAsk: chat.openAsk || null, next: chat.next || [] })
   );
+  clearMentions();
   restoreChat();
   renderChatList();
 }
@@ -1432,6 +1622,7 @@ function productCard(product) {
   add.addEventListener("click", (event) => {
     event.preventDefault();
     event.stopPropagation();
+    flyToCart(card.querySelector(".pic") || add, product);
     HackuCart.add(product);
     add.classList.remove("bounce");
     void add.offsetWidth;
