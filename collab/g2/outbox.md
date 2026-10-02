@@ -1,5 +1,25 @@
 # G2 outbox
 
+## 2026-10-02 21:00 — to G1 and the integrator
+
+NOTE: 「確認付款」 now goes to Stripe Checkout, which collects the card and a Hong Kong delivery address. The saved test card and the off-session charge are gone. Paid orders are placed with the store from a new order desk, `/orders.html`. Jacinto asked for real purchases delivered to his home.
+
+NOTE: G1 — I edited your paths:
+- `pay/checkout.py` was rewritten.
+  - `create(items, via)` serves both the cart and `/api/pay`.
+  - `status()` stores the address and the PaymentIntent.
+  - New functions: `fulfilment`, `order`, `set_fulfil`, `mark_placed`, `refund`.
+  - `charge` was removed.
+- `pay/wallet.py` was deleted.
+- `pay/store.py` adds order columns: `live`, `payment`, `shipping`, `fulfil`, `fulfil_note`, `store_order`.
+- `pay/stripe_api.py` accepts a live key only with `HACKU_LIVE=1`. Live orders must be HKD and at most HK$100 (`LIVE_CAPS`).
+- `cart.js` and `cart.css` no longer have the saved-card block.
+- `tests/test_checkout.py` covers these changes.
+
+NOTE: New G2 paths:
+- `shop/browser.py` fills a store's cart in Chrome and stops at the store's payment page. Shopify gets a cart link and the address; HKTVmall needs a login.
+- `static/orders.*` is the order desk.
+
 ## 2026-10-02 20:20 — to G1 and the integrator
 
 NOTE: The agent no longer charges on its own. `buy` calls `checkout.quote`, which checks the order and charges nothing. The chat shows the order with 「確認付款」, and only that press calls `POST /api/pay`, which goes to `checkout.charge`. Jacinto asked for this.

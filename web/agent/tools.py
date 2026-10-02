@@ -188,10 +188,10 @@ TOOL_SCHEMAS = [
             "name": BUY_TOOL,
             "description": (
                 "Prepare an order for products shown on cards. Nothing is paid by this tool. "
-                "The page shows the order with a pay button, and the payment happens only if the shopper presses it. "
+                "The page shows the order with a pay button that opens Stripe, where the shopper pays and gives a delivery address. "
                 "Call it only when the shopper clearly asks to buy specific products from the cards. All items must share one currency. "
-                "It is refused at once when there is no saved card, the mandate does not cover the total, or a cooling period is open; "
-                "the result then says why."
+                "It is refused at once when the mandate does not cover the total, a cooling period is open, "
+                "or, with real payments, the order is over the real-payment cap; the result then says why."
             ),
             "parameters": {
                 "type": "object",
@@ -436,7 +436,7 @@ def buy(entries):
             "model": {"paid": False, "reason": result.get("reason")},
             "ui": {"kind": "receipt", "paid": False, "reason": result.get("reason")},
         }
-    order = {key: result[key] for key in ("total", "currency", "card", "cap")}
+    order = {key: result.get(key) for key in ("total", "currency", "cap", "live")}
     return {
         "ok": True,
         "summary": f"待確認 {money.text(result['total'], result['currency'])}",
@@ -446,7 +446,11 @@ def buy(entries):
             "total": result["total"],
             "currency": result["currency"],
             "items": [{"name": line["name"], "qty": line["qty"]} for line in result["items"]],
-            "note": "Nothing is paid yet. The shopper sees this order with a pay button. Ask them to check it and press 確認付款.",
+            "live": bool(result.get("live")),
+            "note": (
+                "Nothing is paid yet. The shopper sees this order with a pay button. 確認付款 opens one Stripe page "
+                "where they enter the card and the Hong Kong delivery address together. Ask them to check the order and press 確認付款."
+            ),
         },
         "ui": {"kind": "order", **order, "lines": result["items"], "items": payload},
     }
