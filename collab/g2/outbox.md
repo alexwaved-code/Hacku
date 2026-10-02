@@ -1,5 +1,9 @@
 # G2 outbox
 
+## 2026-10-03 02:00 — to G1 and the integrator
+
+NOTE: The chat page has card tags, a 買 button and 比較 on each card with a side-by-side sheet, voice input, welcome quick actions (check out the cart, buy again, orders), and a cap meter in the checkout box. Product refs now start with a random prefix per server run, so a ref from before a restart never points at a new product. No change to `pay/`, `cart.html`, `cart.js`, or `cart-store.js`.
+
 ## 2026-10-03 01:45 — to G1 and the integrator
 
 NOTE: `/api/chat` now also takes `cart`, the page's `HackuCart` lines (`id`, `qty`, `sealed`, `sig`). The agent reads the cart, changes it with a new `update_cart` tool (the page calls `HackuCart.setQty`, `changeQty`, and `remove`), and can `buy` cart lines; `checkout.quote` checks each seal as before. The agent also sees `mandate.view()` and `checkout.recent(5)` through `tools.set_app_state`, wired in `server.py`. `cart-store.js`, `cart.html`, `cart.js`, and `pay/` are unchanged.

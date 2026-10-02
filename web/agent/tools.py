@@ -1,5 +1,7 @@
 import contextvars
+import random
 import re
+import string
 import threading
 import time
 import urllib.parse
@@ -256,6 +258,7 @@ TOOL_SCHEMAS = [
 _cache = OrderedDict()
 _lock = threading.Lock()
 _counter = count(1)
+_run = "".join(random.choices(string.ascii_lowercase, k=3))
 _quoter = None
 _app_state = None
 _links = ThreadPoolExecutor(max_workers=6, thread_name_prefix="links")
@@ -889,7 +892,7 @@ def _ref_of(item):
 
 
 def _remember(item):
-    ref = f"p{next(_counter)}"
+    ref = f"{_run}{next(_counter)}"
     with _lock:
         _cache[ref] = item
         while len(_cache) > CACHE_SIZE:

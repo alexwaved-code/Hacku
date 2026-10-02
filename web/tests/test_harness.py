@@ -229,6 +229,15 @@ class HarnessTest(TempData):
             tools.CART.reset(token)
         self.assertFalse(refused["ok"])
 
+    def test_refs_from_before_a_restart_never_match_new_products(self):
+        ref = tools._remember(offer())
+        self.assertTrue(ref.startswith(tools._run))
+        with mock.patch.object(tools, "_run", "zzz" if tools._run != "zzz" else "yyy"):
+            fresh = tools._remember(offer())
+        self.assertNotEqual(ref[:3], fresh[:3])
+        tools.set_quoter(lambda items: {"ok": True, "total": 69.0, "currency": "HKD", "items": []})
+        self.assertEqual(tools.buy([{"ref": "p1"}])["model"]["error"], "That ref is unknown or expired. Search again and show the products first.")
+
     def test_clear_empties_the_cart(self):
         token = tools.set_cart([self.cart_line(), {**self.cart_line(), "id": "other"}])
         try:

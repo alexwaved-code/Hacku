@@ -37,6 +37,8 @@ const cardPainters = new Set();
 let cartSeen = null;
 let chatsSeen = null;
 let lastMandate = null;
+const comparing = new Map();
+const MAX_COMPARE = 3;
 const NUMERALS = { 一: 1, 二: 2, 兩: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9, 十: 10, first: 1, second: 2, third: 3, fourth: 4, fifth: 5 };
 const REF_ZH = /第\s*([一二兩三四五六七八九十]|\d{1,2})\s*(?:個|款|件|張|項)/;
 const REF_EN = /(?<![&\w])#([1-9])\b|\b(?:card|option|item|no\.)\s*#?([1-9])\b|\bthe\s+(first|second|third|fourth|fifth)(?:\s+(?:one|card|option|pick))?\b/i;
@@ -62,6 +64,10 @@ els.list.addEventListener(
 );
 els.toLatest.addEventListener("click", () => els.list.scrollTo({ top: els.list.scrollHeight, behavior: "smooth" }));
 document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && document.querySelector(".sheet-scrim")) {
+    closeCompare();
+    return;
+  }
   if (event.key === "Escape" && document.body.classList.contains("drawer-open")) {
     closeDrawers();
     return;
@@ -113,10 +119,235 @@ els.list.addEventListener("click", (event) => {
   card.classList.add("flash");
 });
 window.addEventListener("pagehide", saveChat);
+setupVoice();
 document.querySelectorAll("[data-lang]").forEach((button) => button.addEventListener("click", () => setLanguage(button.dataset.lang)));
 HackuText.apply();
 updateCartCount();
 renderMandate();
+
+/* ---------- Shopping helpers ---------- */
+
+function tagCards(container, products) {
+  const wraps = [...container.querySelectorAll(":scope > .card-wrap:not(.skeleton)")];
+  wraps.forEach((wrap) => wrap.querySelector(".card-tags")?.remove());
+  const list = (products || []).map((product, index) => ({ product, index }));
+  const tags = new Map();
+  const tag = (index, label, kind) => tags.set(index, [...(tags.get(index) || []), [label, kind]]);
+  const priced = list.filter(({ product }) => product.price != null && !Number.isNaN(Number(product.price)));
+  if (priced.length >= 2 && new Set(priced.map(({ product }) => product.currency || "HKD")).size === 1) {
+    const low = priced.reduce((a, b) => (Number(b.product.price) < Number(a.product.price) ? b : a));
+    if (priced.some(({ product }) => Number(product.price) > Number(low.product.price))) tag(low.index, t("tagCheapest"), "cheap");
+  }
+  const reviewed = list.filter(({ product }) => Number(product.reviews) > 0);
+  if (reviewed.length >= 2) {
+    const most = reviewed.reduce((a, b) => (Number(b.product.reviews) > Number(a.product.reviews) ? b : a));
+    tag(most.index, t("tagPopular"), "popular");
+    const rated = reviewed.filter(({ product }) => Number(product.reviews) >= 20 && product.rating != null);
+    if (rated.length >= 2) {
+      const best = rated.reduce((a, b) => (Number(b.product.rating) > Number(a.product.rating) ? b : a));
+      if (best.index !== most.index && rated.filter(({ product }) => Number(product.rating) === Number(best.product.rating)).length === 1) tag(best.index, t("tagTopRated"), "rated");
+    }
+  }
+  for (const [index, labels] of tags) {
+    const price = wraps[index]?.querySelector(".price");
+    if (price) price.after(h("p", { class: "card-tags" }, labels.map(([label, kind]) => h("span", { class: `card-tag ${kind}` }, label))));
+  }
+}
+
+function toggleCompare(product) {
+  const key = HackuCart.idOf(product);
+  if (comparing.has(key)) comparing.delete(key);
+  else if (comparing.size >= MAX_COMPARE) {
+    const bar = compareBar();
+    bar.classList.remove("shake");
+    void bar.offsetWidth;
+    bar.classList.add("shake");
+    bar.querySelector(".compare-note").textContent = t("compareFull");
+    return;
+  } else comparing.set(key, product);
+  syncCompare();
+}
+
+function syncCompare() {
+  document.querySelectorAll(".card-wrap[data-key]").forEach((wrap) => {
+    const on = comparing.has(wrap.dataset.key);
+    wrap.classList.toggle("comparing", on);
+    wrap.querySelector(".cmp-btn")?.setAttribute("aria-pressed", String(on));
+  });
+  const bar = compareBar();
+  const items = [...comparing.values()];
+  bar.hidden = !items.length;
+  bar.querySelector(".compare-thumbs").replaceChildren(
+    ...items.map((product) => h("span", { class: "compare-thumb", title: product.name }, product.image ? h("img", { src: product.image, alt: "", referrerpolicy: "no-referrer", onerror: hideBrokenImage }) : null))
+  );
+  bar.querySelector(".compare-note").textContent = items.length < 2 ? t("compareNeedTwo") : t("comparePicked", items.length);
+  bar.querySelector(".compare-go").disabled = items.length < 2;
+}
+
+function compareBar() {
+  let bar = document.querySelector("#compare-bar");
+  if (bar) return bar;
+  bar = h(
+    "div",
+    { id: "compare-bar", class: "compare-bar", hidden: true },
+    h("span", { class: "compare-thumbs" }),
+    h("span", { class: "compare-note" }),
+    h("button", { type: "button", class: "compare-go", onclick: openCompare }, t("compareOpen")),
+    h("button", { type: "button", class: "compare-clear", onclick: () => { comparing.clear(); syncCompare(); } }, t("compareClear"))
+  );
+  els.form.before(bar);
+  return bar;
+}
+
+function openCompare() {
+  const items = [...comparing.values()];
+  if (items.length < 2) return;
+  const best = (pick) => {
+    const values = items.map(pick).filter((value) => value != null && !Number.isNaN(value));
+    return values.length >= 2 ? values : null;
+  };
+  const prices = best((p) => (p.price != null && new Set(items.map((i) => i.currency || "HKD")).size === 1 ? Number(p.price) : null));
+  const ratings = best((p) => (p.rating != null ? Number(p.rating) : null));
+  const low = prices ? Math.min(...prices) : null;
+  const top = ratings ? Math.max(...ratings) : null;
+  const column = (product) => {
+    const add = h("button", { type: "button", class: "pill compare-add" }, cartIcon(), t("addCart"));
+    add.addEventListener("click", () => {
+      HackuCart.add(product);
+      updateCartCount();
+      add.classList.add("done");
+    });
+    return h(
+      "div",
+      { class: "compare-col" },
+      h("div", { class: "compare-pic" }, product.image ? h("img", { src: product.image, alt: "", referrerpolicy: "no-referrer", onerror: hideBrokenImage }) : null),
+      h("p", { class: "compare-name", title: product.name }, product.name),
+      h("dl", {},
+        h("dt", {}, t("price")),
+        h("dd", { class: low != null && Number(product.price) === low ? "best" : "" }, product.price != null ? HackuMoney.text(product.price, product.currency) : t("priceAtStore")),
+        h("dt", {}, t("store")),
+        h("dd", {}, product.store || "—"),
+        h("dt", {}, t("rating")),
+        h("dd", { class: top != null && Number(product.rating) === top ? "best" : "" }, product.rating != null ? `★ ${Number(product.rating).toFixed(1)}` : "—"),
+        h("dt", {}, t("reviews")),
+        h("dd", {}, product.reviews ? compact(product.reviews) : "—")
+      ),
+      product.url ? h("a", { class: "compare-link", href: product.url, target: "_blank", rel: "noopener noreferrer" }, t("goStore", shortStore(product.store))) : null,
+      add
+    );
+  };
+  const ask = h("button", { type: "button", class: "order-pay" }, t("askWhich"));
+  ask.addEventListener("click", () => {
+    const names = items.map((p, i) => `${i + 1}. ${p.name}${p.price != null ? ` ${HackuMoney.text(p.price, p.currency)}` : ""}`).join(t("sep"));
+    closeCompare();
+    send(t("askCompare", names));
+  });
+  const close = h("button", { type: "button", class: "icon-btn", "aria-label": t("close"), onclick: closeCompare }, lineIcon("M6 6l12 12M18 6L6 18"));
+  const sheet = h(
+    "div",
+    { class: "compare-sheet", role: "dialog", "aria-modal": "true", "aria-label": t("compareHeading") },
+    h("div", { class: "compare-head" }, h("h2", {}, t("compareHeading")), close),
+    h("div", { class: "compare-grid", style: `--cols:${items.length}` }, items.map(column)),
+    h("div", { class: "compare-foot" }, ask)
+  );
+  const scrim = h("div", { class: "sheet-scrim" }, sheet);
+  scrim.addEventListener("click", (event) => {
+    if (event.target === scrim) closeCompare();
+  });
+  document.body.append(scrim);
+  ask.focus();
+}
+
+function closeCompare() {
+  document.querySelector(".sheet-scrim")?.remove();
+}
+
+function renderCapMeter(items) {
+  const meter = document.querySelector("#cap-meter");
+  if (!meter) return;
+  const codes = new Set(items.map((item) => item.currency || "HKD"));
+  const priced = items.every((item) => item.price != null && !Number.isNaN(Number(item.price)));
+  const code = [...codes][0];
+  const cap = lastMandate?.valid ? Number((lastMandate.caps || {})[code]) : NaN;
+  if (!items.length || codes.size !== 1 || !priced || !(cap > 0)) {
+    meter.hidden = true;
+    return;
+  }
+  const total = items.reduce((sum, item) => sum + Number(item.price) * (Number(item.qty) || 1), 0);
+  const over = total > cap;
+  meter.hidden = false;
+  meter.classList.toggle("over", over);
+  meter.querySelector(".cap-bar span").style.width = `${Math.max(3, Math.min(100, (total / cap) * 100))}%`;
+  meter.querySelector(".cap-text").textContent = over ? t("capOver", HackuMoney.text(cap, code)) : t("capOk", HackuMoney.text(cap - total, code));
+}
+
+function quickActions() {
+  const box = h("div", { class: "quick" });
+  const chip = (icon, label, prompt) => h("button", { type: "button", class: "quick-chip", onclick: () => send(prompt) }, icon, h("span", {}, label));
+  const paint = (orders) => {
+    const chips = [];
+    const count = HackuCart.count();
+    if (count) chips.push(chip(cartIcon(), t("quickCheckout", count), t("quickCheckoutAsk")));
+    const names = [];
+    for (const order of orders) {
+      const name = order.items?.[0]?.name;
+      if (name && !names.includes(name)) names.push(name);
+    }
+    for (const name of names.slice(0, 2)) {
+      chips.push(chip(lineIcon("M4 12a8 8 0 0 1 14-5.3M20 4v4h-4M20 12a8 8 0 0 1-14 5.3M4 20v-4h4"), t("reorder", name.length > 22 ? `${name.slice(0, 22)}…` : name), t("reorderAsk", name)));
+    }
+    if (orders.length) chips.push(chip(lineIcon("M4 8l8-4 8 4v8l-8 4-8-4V8zM4 8l8 4 8-4M12 12v8"), t("quickOrders"), t("quickOrders")));
+    box.replaceChildren(...(chips.length ? [h("p", { class: "quick-title" }, t("quickTitle")), h("div", { class: "quick-row" }, chips)] : []));
+  };
+  paint([]);
+  fetch("/api/orders")
+    .then((response) => (response.ok ? response.json() : null))
+    .then((data) => paint(Array.isArray(data?.orders) ? data.orders : []))
+    .catch(() => {});
+  return box;
+}
+
+function setupVoice() {
+  const mic = document.querySelector("#mic");
+  const Speech = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!mic || !Speech) return;
+  mic.hidden = false;
+  let listening = null;
+  mic.addEventListener("click", () => {
+    if (listening) {
+      listening.stop();
+      return;
+    }
+    if (state.busy) return;
+    const recognition = new Speech();
+    recognition.lang = HackuText.get() === "en" ? "en-US" : "zh-HK";
+    recognition.interimResults = true;
+    let heard = "";
+    let failed = false;
+    recognition.onresult = (event) => {
+      heard = [...event.results].map((result) => result[0].transcript).join("");
+      els.input.value = heard;
+      els.form.classList.toggle("has-text", !!heard.trim());
+    };
+    recognition.onerror = () => {
+      failed = true;
+    };
+    recognition.onend = () => {
+      listening = null;
+      mic.classList.remove("listening");
+      els.input.placeholder = t(state.pendingAsk ? "askPlaceholder" : "placeholder");
+      if (heard.trim()) els.form.requestSubmit();
+      else if (failed) {
+        els.input.placeholder = t("micError");
+        setTimeout(() => (els.input.placeholder = t(state.pendingAsk ? "askPlaceholder" : "placeholder")), 2500);
+      }
+    };
+    listening = recognition;
+    mic.classList.add("listening");
+    els.input.placeholder = t("micListening");
+    recognition.start();
+  });
+}
 
 function cartForAgent() {
   return HackuCart.load().map((item) => ({ id: item.id, qty: item.qty, sealed: item.sealed, sig: item.sig }));
@@ -147,6 +378,8 @@ function setLanguage(lang) {
   renderChatList();
   renderSideCart();
   renderMandate(lastMandate);
+  document.querySelector("#compare-bar")?.remove();
+  if (comparing.size) syncCompare();
 }
 
 /* ---------- Sending ---------- */
@@ -443,6 +676,7 @@ async function renderMandate(known = null) {
   }
   if (!mandate) return;
   lastMandate = mandate;
+  renderCapMeter(HackuCart.load());
   const caps = Object.entries(mandate.caps || {})
     .sort(([a], [b]) => (b === "HKD") - (a === "HKD"))
     .map(([code, cap]) => HackuMoney.text(cap, code));
@@ -484,6 +718,7 @@ function renderSideTotal(items) {
   }
   const count = items.reduce((n, item) => n + (Number(item.qty) || 1), 0);
   if (label) label.textContent = t("itemCount", count);
+  renderCapMeter(items);
   const sums = new Map();
   let missing = false;
   for (const item of items) {
@@ -568,7 +803,8 @@ function welcomeItem() {
     h("img", { class: "welcome-logo", src: "logo.svg", alt: "" }),
     h("h2", {}, t("welcomeTitle")),
     h("p", {}, t("welcomeText")),
-    h("div", { class: "examples" }, examples)
+    h("div", { class: "examples" }, examples),
+    quickActions()
   );
 }
 
@@ -858,6 +1094,7 @@ function appendSavedAgent(entry) {
   item._products = products;
   item._receipts = receipts;
   numberCards(cards);
+  tagCards(cards, products);
   markPick(item, entry.text);
   els.list.append(item);
 }
@@ -934,6 +1171,7 @@ function createTurn() {
         })
       );
       numberCards(cards);
+      tagCards(cards, items);
     },
     stepDone(event) {
       activity.toolDone(event);
@@ -1194,7 +1432,27 @@ function productCard(product) {
     event.stopPropagation();
     editQty(product, qtyBtn, paintQty);
   });
-  const wrap = h("div", { class: "card-wrap" }, card, h("div", { class: "cart-controls" }, add, qtyBtn));
+  const key = HackuCart.idOf(product);
+  const buy = h("button", { type: "button", class: "tool-btn buy-btn", title: t("buyNowTitle") }, lineIcon("M13 3L5 13h6l-1 8 8-10h-6l1-8z"), h("span", {}, t("buyNow")));
+  const pick = h(
+    "button",
+    { type: "button", class: "tool-btn cmp-btn", title: t("compareTitle"), "aria-pressed": String(comparing.has(key)) },
+    lineIcon("M12 4v16M8 20h8M4 8h16M7 8l-3 6a3 3 0 0 0 6 0L7 8zM17 8l-3 6a3 3 0 0 0 6 0l-3-6z"),
+    h("span", {}, t("compare"))
+  );
+  const wrap = h("div", { class: comparing.has(key) ? "card-wrap comparing" : "card-wrap", "data-key": key }, card, h("div", { class: "card-tools" }, pick, buy), h("div", { class: "cart-controls" }, add, qtyBtn));
+  buy.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (state.busy) return;
+    const number = [...wrap.parentElement.querySelectorAll(":scope > .card-wrap:not(.skeleton)")].indexOf(wrap) + 1;
+    send(t("buyThis", { n: number, name: product.name }));
+  });
+  pick.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    toggleCompare(product);
+  });
   cardPainters.add({ node: wrap, product, paint: (n) => qtyBtn.isConnected && paintQty(n) });
   return wrap;
 }

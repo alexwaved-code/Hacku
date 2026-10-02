@@ -266,3 +266,21 @@ The agent can see and run the app, not only search.
 
 54 unit tests pass. In the page: a search for speakers under HK$300, then 「把第一個加入購物車，要兩件」 (cart shows 2 × HK$101), 「我的購物車有什麼？」 (HK$202), 「打開購物車」, 「我的付款授權還有多少？上次買了什麼？」 (caps, end date, five orders), 「改成一件就好」, 「清空購物車」, and switching to English and back by asking.
 
+## 2026-10-03 02:00
+
+Shopping tools on the chat page, so it works like a shop and not only a chat.
+
+**What shipped**
+
+- Card tags: 「最便宜」, 「評價最多」, 「評分最高」.
+- 買 on each card asks the agent to prepare that order; 比較 picks up to 3 cards for a side-by-side sheet with 「問助理哪個好」.
+- Voice input with the microphone button.
+- The checkout box shows the cart against the per-order cap.
+- Welcome quick actions: check out the cart, buy again, where are my orders.
+- Follow-ups that act: 「買推薦的那個」, 「推薦的加入購物車」.
+- Product refs carry a random prefix per server run. Before, refs restarted at `p1` after a restart, so a ref in an older chat could point at a different product found later; 買 on an old Anker card prepared an order for another product. Now an old ref is unknown and the agent says so.
+
+**Checked**
+
+55 unit tests pass. In the page: tags on a speaker search; 3 cards compared with the cheapest price and top rating ticked; 「問助理哪個好」 got a question card, then an answer per need; a fresh USB-C cable search, 買 on card 2 prepared an order for that exact cable (canceled); quick actions and the cap meter shown; the phone layout at 390 px.
+
