@@ -1093,6 +1093,7 @@ function appendSavedAgent(entry) {
   item._markdown = entry.text || "";
   item._products = products;
   item._receipts = receipts;
+  if (products.length) cards.style.setProperty("--n", String(Math.min(products.length, 5)));
   numberCards(cards);
   tagCards(cards, products);
   markPick(item, entry.text);
@@ -1124,6 +1125,7 @@ function createTurn() {
   const clearSkeleton = () => cards.querySelectorAll(".skeleton").forEach((node) => node.remove());
   const showSkeleton = () => {
     if (cards.children.length) return;
+    cards.style.setProperty("--n", String(SKELETON_CARDS));
     for (let i = 0; i < SKELETON_CARDS; i += 1) {
       cards.append(
         h(
@@ -1170,8 +1172,13 @@ function createTurn() {
           return card;
         })
       );
+      cards.style.setProperty("--n", String(Math.min(items.length, 5) || 5));
       numberCards(cards);
       tagCards(cards, items);
+      cards.querySelectorAll("img").forEach((img) => {
+        if (!img.complete) img.addEventListener("load", () => scrollToEnd(), { once: true });
+      });
+      scrollToEnd();
     },
     stepDone(event) {
       activity.toolDone(event);
@@ -1207,6 +1214,7 @@ function createTurn() {
       markPick(item, item._markdown);
       activity.finish(t("done"));
       item.querySelector(".ask button")?.focus({ preventScroll: true });
+      scrollToEnd(true);
     },
     addActions(onRetry) {
       const said = typer.text().trim();
@@ -1236,7 +1244,7 @@ function createTurn() {
           )
         );
       }
-      scrollToEnd();
+      scrollToEnd(true);
     },
     stop() {
       typer.flush();
@@ -1975,7 +1983,12 @@ function compact(value) {
 
 function scrollToEnd(force = false) {
   const el = els.list;
-  if (force || el.scrollHeight - el.scrollTop - el.clientHeight < 160) el.scrollTop = el.scrollHeight;
+  const go = () => {
+    if (!force && el.scrollHeight - el.scrollTop - el.clientHeight >= 360) return;
+    el.scrollTop = el.scrollHeight;
+  };
+  go();
+  requestAnimationFrame(go);
 }
 
 restoreChat();

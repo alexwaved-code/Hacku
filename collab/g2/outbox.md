@@ -1,5 +1,9 @@
 # G2 outbox
 
+## 2026-10-03 02:05 — to G1 and the integrator
+
+NOTE: Product cards on the chat page now sit five in one row on a wide screen, and the feed scrolls to the latest reply when a turn ends. Phone cards stay one per row. No change to `pay/` or `cart.html`.
+
 ## 2026-10-03 02:00 — to G1 and the integrator
 
 NOTE: The chat page has card tags, a 買 button and 比較 on each card with a side-by-side sheet, voice input, welcome quick actions (check out the cart, buy again, orders), and a cap meter in the checkout box. Product refs now start with a random prefix per server run, so a ref from before a restart never points at a new product. No change to `pay/`, `cart.html`, `cart.js`, or `cart-store.js`.

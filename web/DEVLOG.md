@@ -284,3 +284,11 @@ Shopping tools on the chat page, so it works like a shop and not only a chat.
 
 55 unit tests pass. In the page: tags on a speaker search; 3 cards compared with the cheapest price and top rating ticked; 「問助理哪個好」 got a question card, then an answer per need; a fresh USB-C cable search, 買 on card 2 prepared an order for that exact cable (canceled); quick actions and the cap meter shown; the phone layout at 390 px.
 
+## 2026-10-03 02:05
+
+Five product cards on one row. After the agent finishes writing, the feed jumps to that reply.
+
+**Checked**
+
+A live search for USB-C cables under HK$80: five cards in one row (217×327), the reply and follow-ups on screen, scroll gap 0.
+
