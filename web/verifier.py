@@ -37,9 +37,8 @@ RATE_LISTING = {
 def load_verify_env(path=None):
     env_path = path or Path(__file__).resolve().parent.parent / ".env"
     env = {}
-    if not env_path.exists():
-        return env
-    for line in env_path.read_text(encoding="utf-8").splitlines():
+    lines = env_path.read_text(encoding="utf-8").splitlines() if env_path.exists() else []
+    for line in lines:
         line = line.strip()
         if not line or line.startswith("#") or "=" not in line:
             continue

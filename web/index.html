@@ -1,41 +1,32 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="zh-Hant">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Shopping agent</title>
+    <title>購物助理</title>
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
     <main class="chat">
       <header class="chat-header">
         <div>
-          <h1>Shopping agent</h1>
-          <p id="consent" class="consent">Checking consent…</p>
+          <h1>購物助理</h1>
+          <p class="sub">幫你找香港買得到的商品。下單由你自己決定。</p>
         </div>
-        <button type="button" id="revoke">Revoke</button>
+        <button type="button" id="new-chat" class="pill">新對話</button>
       </header>
       <ol id="messages" class="messages" aria-live="polite"></ol>
       <footer class="dock">
-        <section class="guide" aria-label="How to state a spending decision">
-          <p>The mandate allows an official grocer up to $200 a week, or an official ticket platform up to $50 and 2 tickets. Green pays. Yellow asks you. Red blocks.</p>
-          <div class="examples">
-            <button type="button" data-example="Buy groceries for 80 USD.">Groceries, $80</button>
-            <button type="button" data-example="Buy an entertainment ticket for 70 USD.">Entertainment, $70</button>
-            <button type="button" data-example="Buy an entertainment ticket from a private account for 40 USD.">Private account</button>
-          </div>
-        </section>
+        <div class="examples" id="examples">
+          <button type="button" class="pill" data-prompt="HK$500 以內，通勤用的降噪耳機">降噪耳機 HK$500 內</button>
+          <button type="button" class="pill" data-prompt="可以充手提電腦的行動電源">充手提電腦的行動電源</button>
+          <button type="button" class="pill" data-prompt="推薦一個電熱水壺">電熱水壺</button>
+        </div>
         <form id="composer" class="composer">
-          <label class="sr-only" for="message">Spending decision</label>
-          <input
-            id="message"
-            name="message"
-            type="text"
-            autocomplete="off"
-            placeholder="Category, amount, and fees if you know them"
-            required
-          />
-          <button type="submit">Send</button>
+          <label class="sr-only" for="message">訊息</label>
+          <input id="message" name="message" type="text" autocomplete="off" placeholder="想買什麼？預算多少？" />
+          <button type="submit" id="send">送出</button>
+          <button type="button" id="stop" hidden>停止</button>
         </form>
       </footer>
     </main>
