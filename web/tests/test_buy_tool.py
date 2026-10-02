@@ -1,7 +1,7 @@
 import unittest
 
 import cards
-from agent import tools
+from agent import harness, tools
 from helpers import TempData
 
 
@@ -19,39 +19,57 @@ def offer(price=69):
     }
 
 
+def quoted(items):
+    return {
+        "ok": True,
+        "total": 69.0,
+        "currency": "HKD",
+        "card": "Visa •••• 4242",
+        "cap": 100,
+        "items": [{"name": "MOMAX 60W cable", "store": "HKTVmall", "qty": 1, "price": 69.0}],
+    }
+
+
 class BuyToolTest(TempData):
     def tearDown(self):
-        tools.set_buyer(None)
+        tools.set_quoter(None)
         super().tearDown()
 
-    def test_sends_sealed_items_and_returns_a_receipt(self):
+    def test_prepares_an_order_for_the_shopper_to_pay(self):
         seen = []
 
-        def pay(items):
+        def quote(items):
             seen.extend(items)
-            return {"paid": True, "amount": 69.0, "currency": "HKD", "card": "Visa •••• 4242", "hash": "a" * 64,
-                    "items": [{"name": "MOMAX 60W cable", "store": "HKTVmall", "qty": 1, "price": 69.0}]}
+            return quoted(items)
 
-        tools.set_buyer(pay)
+        tools.set_quoter(quote)
         ref = tools._remember(offer())
         result = tools.run_tool("buy", {"items": [{"ref": ref, "qty": "1"}]})
-        self.assertTrue(result["model"]["paid"])
-        self.assertEqual(result["ui"]["kind"], "receipt")
-        card = {field: seen[0][field] for field in cards.FIELDS}
-        self.assertTrue(cards.valid(card, seen[0]["sig"]))
+        self.assertFalse(result["model"]["paid"])
+        self.assertTrue(result["model"]["awaiting_shopper"])
+        self.assertEqual(result["ui"]["kind"], "order")
+        self.assertEqual(result["ui"]["total"], 69.0)
+        sent = result["ui"]["items"][0]
+        self.assertTrue(cards.valid({field: sent[field] for field in cards.FIELDS}, sent["sig"]))
         self.assertEqual(seen[0]["qty"], 1)
 
     def test_refusal_reaches_the_model(self):
-        tools.set_buyer(lambda items: {"paid": False, "reason": "超過授權的每筆上限"})
+        tools.set_quoter(lambda items: {"ok": False, "reason": "超過授權的每筆上限"})
         ref = tools._remember(offer())
         result = tools.run_tool("buy", {"items": [{"ref": ref}]})
         self.assertFalse(result["model"]["paid"])
         self.assertIn("上限", result["model"]["reason"])
+        self.assertEqual(result["ui"]["kind"], "receipt")
 
     def test_unknown_ref(self):
-        tools.set_buyer(lambda items: {"paid": True})
+        tools.set_quoter(quoted)
         result = tools.run_tool("buy", {"items": [{"ref": "p999999"}]})
         self.assertFalse(result["ok"])
+
+    def test_system_prompt_renders(self):
+        prompt = harness.system_prompt()
+        self.assertIn("確認付款", prompt)
+        self.assertNotIn("{now}", prompt)
 
     def test_shown_cards_carry_their_ref(self):
         ref = tools._remember({**offer(), "url": "https://www.hktvmall.com/p/2"})

@@ -1,8 +1,9 @@
-"""Payments in Stripe test mode, from the cart or from the agent.
+"""Payments in Stripe test mode, from the cart or from the agent's order card.
 
 Both paths pass the same gates: every card seal matches, the mandate covers the order total,
 no cooling period is open, and the verifier rates every item 3.
-The cart opens a Stripe Checkout page. The agent charges the saved card with no page.
+The cart opens a Stripe Checkout page. The agent's order is quoted first and charged to the saved card
+only after the shopper presses pay.
 """
 
 import hashlib
@@ -61,15 +62,28 @@ def create(items):
     return {"url": session["url"], "id": session["id"], "ratings": ratings}
 
 
-def charge(items):
-    """Agent path: charge the saved card now, with no checkout page."""
+def quote(items):
+    """Agent path, step one: check the order against the card, mandate, and cooling period. Nothing is charged."""
     stripe_api.key()
     lines = _check_items(items)
     currency, total = lines[0]["currency"], _total(lines)
-    saved = wallet.current()
-    if not saved:
-        raise CheckoutError("還沒有儲存付款卡。請到購物車按「儲存 Stripe 測試卡」。", 403)
-    customer, method, label = saved
+    label = _saved_card()[2]
+    _gates(currency, total, mandate.now())
+    return {
+        "currency": currency,
+        "total": total,
+        "card": label,
+        "cap": (mandate.view().get("caps") or {}).get(currency),
+        "items": _summary(lines),
+    }
+
+
+def charge(items):
+    """Agent path, step two: the shopper pressed pay. Rate the items, then charge the saved card."""
+    stripe_api.key()
+    lines = _check_items(items)
+    currency, total = lines[0]["currency"], _total(lines)
+    customer, method, label = _saved_card()
     at = mandate.now()
     ratings = _approve(lines, currency, total, at)
 
@@ -108,7 +122,7 @@ def charge(items):
         "currency": currency,
         "card": label,
         "hash": receipt,
-        "items": [{"name": line["name"], "store": line["store"], "qty": line["qty"], "price": line["price"]} for line in lines],
+        "items": _summary(lines),
         "ratings": ratings,
     }
 
@@ -168,13 +182,24 @@ def cooling_until(at):
     return until if at < until else None
 
 
-def _approve(lines, currency, total, at):
+def _saved_card():
+    saved = wallet.current()
+    if not saved:
+        raise CheckoutError("還沒有儲存付款卡。請到購物車按「儲存 Stripe 測試卡」。", 403)
+    return saved
+
+
+def _gates(currency, total, at):
     problem = mandate.problem(currency, total, at)
     if problem:
         raise CheckoutError(f"不能付款：{problem}", 403)
     until = cooling_until(at)
     if until:
         raise CheckoutError(f"上一次結帳有商品被驗證拒絕，冷靜期到 {until:%H:%M} 才結束。", 403)
+
+
+def _approve(lines, currency, total, at):
+    _gates(currency, total, at)
     ratings = verifier.verify_products(_products(lines))
     if any(rating["rating"] == 1 for rating in ratings):
         _start_cooling(at)
@@ -198,6 +223,10 @@ def _start_cooling(at):
     with store.db() as conn:
         store.put(conn, "cooling_until", until.isoformat(timespec="seconds"))
         store.append(conn, "cooling_started", {"until": until.isoformat(timespec="seconds")}, at)
+
+
+def _summary(lines):
+    return [{"name": line["name"], "store": line["store"], "qty": line["qty"], "price": line["price"]} for line in lines]
 
 
 def _total(lines):

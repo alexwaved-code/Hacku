@@ -4,7 +4,7 @@ A chat page that researches real products, in Hong Kong by default or in one sto
 
 The shopper signs a spending mandate first: a cap per order for each currency, valid 1 to 30 days. There are two ways to pay inside it:
 
-- **The assistant pays.** The shopper saves a Stripe test card once, then says 「幫我買第一個」 in the chat. The assistant calls `buy` with the card's ref, the server runs the same gates as the cart, and charges the saved card off-session. A receipt card appears in the chat.
+- **The assistant prepares, the shopper confirms.** The shopper saves a Stripe test card once, then says 「幫我買第一個」 in the chat. The assistant calls `buy` with the card's ref. The server checks the card, the mandate, and the cooling period, and the chat shows a 「確認訂單」 card with the items, the total, the card, and the cap. Nothing is paid until the shopper presses 「確認付款」. Then the verifier rates the items, the saved card is charged off-session, and the card turns into a receipt. 「取消」 closes the order unpaid.
 - **The shopper pays.** Cards go to the cart, and the shopper presses pay on Stripe Checkout.
 
 Either way, no real money moves, and the store does not get an order.
@@ -27,7 +27,7 @@ Either way, no real money moves, and the store does not get an order.
 | `tests/` | both | `python3 -m unittest discover -s tests` from `web/`. |
 | `data/` | | Created at run time: `hacku.db`, `cache.db`, and `secret.key`. Not in git. |
 
-`agent/` and `pay/` do not import each other. Both use `cards.py` and `money.py`. `server.py` hands `checkout.charge` to the agent with `tools.set_buyer`.
+`agent/` and `pay/` do not import each other. Both use `cards.py` and `money.py`. `server.py` hands `checkout.quote` to the agent with `tools.set_quoter`. The agent can quote an order but has no way to charge it.
 
 ## Setup
 
@@ -68,7 +68,7 @@ Without `OPENAI_API_KEY`, `/api/chat` returns an error. Without `SERPER_API_KEY`
 | `show_products` | Shows up to 3 refs as cards. Card data comes from the cached search result, so the model cannot change a price or link. Each card carries `sig`, the server seal. After any tool returns refs, the next round is forced to call `show_products`. |
 | `web_search` | Google search in `region`. Titles, links, snippets. |
 | `open_page` | Reads one https page: JSON-LD product, price, picture, page text. Private and local addresses are refused. A store product page returns a `ref`. |
-| `buy` | `{"items": [{"ref", "qty"}]}`, up to 5 lines, refs from shown cards only. The server rebuilds each item from its cache, seals it, and calls the payer. The result is `{paid, amount, currency, card, record}` or `{paid: false, reason}`; the page shows it as a receipt card. The prompt allows `buy` only when the shopper clearly asks to buy a shown product. |
+| `buy` | `{"items": [{"ref", "qty"}]}`, up to 5 lines, refs from shown cards only. The server rebuilds each item from its cache, seals it, and quotes it. It pays nothing. The model gets `{awaiting_shopper, total, currency, items}` or `{paid: false, reason}`; the page gets `ui.kind == "order"` with the sealed items, or a refusal card. After the shopper presses pay or cancel, the page adds `shopper` (`paid` with amount and record, `canceled`, or `refused`) to that tool message, so the next turn knows. The prompt allows `buy` only when the shopper clearly asks to buy a shown product. |
 
 Page text is data. Text that tries to instruct an AI agent is flagged to the model and on the card.
 
@@ -97,6 +97,7 @@ Search results are cached in `data/cache.db` for 6 hours and page reads for 2 ho
 | `POST /api/mandate/revoke` | | Revokes the open mandate |
 | `POST /api/checkout` | `{"items": [{name, store, price, currency, url, image, id, qty, sig}]}` | `{url, id, ratings}`. The page opens `url`. Errors: 403 mandate, live key, or cooling; 409 seal or verifier rating; 503 no key. |
 | `GET /api/checkout/status?session=cs_test_...` | | `{paid, amount, currency, items, hash}`, read back from Stripe |
+| `POST /api/pay` | `{"items": [...]}`, the sealed items from an order card | Called by 「確認付款」. Runs every gate, then charges the saved card. `{paid, id, amount, currency, card, hash, items, ratings}`. Errors: 403 card, mandate, or cooling; 409 seal or verifier rating; 402 Stripe did not confirm. |
 | `GET /api/card` | | `{saved, label}` for the assistant's payment card |
 | `POST /api/card` | | Attaches Stripe's test Visa (`pm_card_visa`) to a test customer and saves it for the assistant |
 | `POST /api/card/forget` | | Detaches the card. The assistant can no longer pay. |
@@ -121,10 +122,12 @@ Test card on Stripe Checkout: `4242 4242 4242 4242`, any future date, any CVC.
 2. Enter caps (for example HKD 100 and CNY 100), pick 7 days, press 「簽署授權」.
 3. Press 「儲存 Stripe 測試卡（Visa 4242）」.
 4. Press 「返回對話」, then 「新對話」. Ask 「USB-C 充電線，HK$100 以內，1 米，支援 60W，直接推薦」 or press the 「淘寶手機殼」 suggestion. A search takes about 20 to 40 seconds.
-5. Say 「幫我買第一個」. A green receipt card shows the amount, the test card, and the record hash.
-6. Ask it to buy all three at once, or the expensive one. A red card says the total is over the cap.
-7. Open the cart. 「付款紀錄」 lists the payment as 「助理付款」, and 「紀錄鏈檢查通過。」 sits under the list.
-8. Press 「撤銷授權」, go back, and ask it to buy again. The red card says the mandate is revoked.
+5. Say 「幫我買第一個」. A 「確認訂單」 card shows the item, the total, the test card, and the cap. Nothing is paid yet.
+6. Press 「確認付款」. After 10 to 30 seconds the card turns green with the amount and the record hash. Ask 「付款成功了嗎？」 and the assistant quotes the same record.
+7. Ask for another one and press 「取消」. The card says it was not paid.
+8. Ask it to buy all three at once, or the expensive one. A red card says the total is over the cap, and there is no pay button.
+9. Open the cart. 「付款紀錄」 lists the payment as 「助理付款」, and 「紀錄鏈檢查通過。」 sits under the list.
+10. Press 「撤銷授權」, go back, and ask it to buy again. The red card says the mandate is revoked.
 
 ## Other groups
 

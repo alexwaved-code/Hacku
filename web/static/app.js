@@ -82,6 +82,7 @@ async function runTurn(display, entries) {
     const added = await streamChat(controller, turn);
     await turn.finish();
     state.thread.push(...added);
+    syncOrders();
     saveChat();
   } catch (error) {
     if (turn.timedOut) {
@@ -277,7 +278,7 @@ function appendSavedAgent(entry) {
   const products = Array.isArray(entry.products) ? entry.products : [];
   if (products.length) cards.append(...products.map((product, index) => productCard(product, index === 0)));
   const receipts = Array.isArray(entry.receipts) ? entry.receipts : [];
-  const item = h("li", { class: "message agent turn" }, cards, ...receipts.map(receiptCard), text);
+  const item = h("li", { class: "message agent turn" }, cards, ...receipts.map(paymentCard), text);
   item._markdown = entry.text || "";
   item._products = products;
   item._receipts = receipts;
@@ -335,10 +336,10 @@ function createTurn() {
         cards.replaceChildren(...event.ui.items.map((product, index) => productCard(product, index === 0)));
         scrollToEnd();
       }
-      if (event.ui?.kind === "receipt") {
-        item._receipts.push(event.ui);
-        receipts.append(receiptCard(event.ui));
-        if (event.ui.paid) updateCartCount();
+      if (event.ui?.kind === "receipt" || event.ui?.kind === "order") {
+        const entry = { ...event.ui, call: event.id };
+        item._receipts.push(entry);
+        receipts.append(paymentCard(entry));
         scrollToEnd();
       }
     },
@@ -412,6 +413,112 @@ function productCard(product, best) {
     updateCartCount();
   });
   return h("div", { class: "card-wrap" }, card, add);
+}
+
+function paymentCard(entry) {
+  return entry.kind === "order" ? orderCard(entry) : receiptCard(entry);
+}
+
+function orderCard(order) {
+  if (order.result) return receiptCard(order.result);
+  if (order.canceled) {
+    return h(
+      "div",
+      { class: "receipt canceled" },
+      h("p", { class: "receipt-title" }, "已取消"),
+      h("p", { class: "receipt-line" }, "這筆訂單沒有付款。")
+    );
+  }
+  const total = HackuMoney.text(order.total, order.currency);
+  const lines = (order.lines || []).map((line) =>
+    h(
+      "li",
+      {},
+      h("span", { class: "order-name" }, `${line.name}${line.qty > 1 ? ` × ${line.qty}` : ""}`),
+      h("span", { class: "order-price" }, HackuMoney.text(line.price * line.qty, order.currency)),
+      h("span", { class: "receipt-store" }, line.store)
+    )
+  );
+  const message = h("p", { class: "receipt-line order-message", hidden: true });
+  const pay = h("button", { type: "button", class: "order-pay" }, `確認付款 ${total}`);
+  const cancel = h("button", { type: "button", class: "pill" }, "取消");
+  const card = h(
+    "div",
+    { class: "receipt order" },
+    h("p", { class: "receipt-title" }, "確認訂單"),
+    h("ul", { class: "order-lines" }, lines),
+    h("p", { class: "order-total" }, h("span", {}, "合計"), h("span", {}, total)),
+    h(
+      "p",
+      { class: "receipt-line" },
+      `${order.card} · 授權每筆上限 ${order.cap != null ? HackuMoney.text(order.cap, order.currency) : "—"} · Stripe 測試模式，沒有扣真錢`
+    ),
+    message,
+    h("div", { class: "order-actions" }, pay, cancel)
+  );
+
+  const settle = () => {
+    card.replaceWith(orderCard(order));
+    syncOrders();
+    saveChat();
+  };
+  pay.addEventListener("click", async () => {
+    pay.disabled = cancel.disabled = true;
+    pay.textContent = "付款中…";
+    message.hidden = false;
+    message.textContent = "正在驗證商品並扣款，通常要 10 到 30 秒。";
+    let response;
+    let data = {};
+    try {
+      response = await fetch("/api/pay", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ items: order.items }),
+      });
+      data = await response.json().catch(() => ({}));
+    } catch {
+      response = null;
+    }
+    if (!response || response.status >= 500) {
+      pay.disabled = cancel.disabled = false;
+      pay.textContent = `確認付款 ${total}`;
+      message.textContent = response ? data.error || "付款服務發生錯誤，請再按一次。" : "連不上伺服器，請再按一次。";
+      return;
+    }
+    order.result = response.ok
+      ? { kind: "receipt", paid: true, amount: data.amount, currency: data.currency, card: data.card, hash: data.hash, items: data.items }
+      : { kind: "receipt", paid: false, reason: data.error || "付款被拒絕。" };
+    settle();
+  });
+  cancel.addEventListener("click", () => {
+    order.canceled = true;
+    settle();
+  });
+  return card;
+}
+
+function syncOrders() {
+  const outcomes = new Map();
+  for (const item of els.list.children) {
+    for (const entry of item._receipts || []) {
+      if (entry.kind !== "order" || !entry.call) continue;
+      if (entry.result?.paid) {
+        const { amount, currency, hash } = entry.result;
+        outcomes.set(entry.call, { paid: true, amount, currency, record: (hash || "").slice(0, 12) });
+      } else if (entry.result) outcomes.set(entry.call, { refused: entry.result.reason });
+      else if (entry.canceled) outcomes.set(entry.call, { canceled: true });
+    }
+  }
+  for (const message of state.thread) {
+    if (message.role !== "tool" || !outcomes.has(message.tool_call_id)) continue;
+    try {
+      const content = JSON.parse(message.content);
+      content.shopper = outcomes.get(message.tool_call_id);
+      message.content = JSON.stringify(content);
+    } catch {
+      /* Not a JSON tool result. */
+    }
+  }
 }
 
 function receiptCard(receipt) {

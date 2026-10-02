@@ -135,3 +135,19 @@ Browser check, run twice:
 - A vague 「再幫我買一個」 led to no purchase.
 - The cart listed both payments as 「助理付款」, and the hash chain checked out. Cart checkout still opens a Stripe Checkout Session.
 
+## 2026-10-02 20:20
+
+The assistant prepares the order, and the shopper presses pay.
+
+- `buy` now only quotes. `checkout.quote` checks the seals, the saved card, the mandate cap, and the cooling period, and charges nothing. The agent gets `quote`; it has no route to `charge`.
+- The chat shows a 「確認訂單」 card: items, total, card, cap, 「確認付款」, and 「取消」. 「確認付款」 posts the sealed items to `POST /api/pay`, which runs every gate, the verifier included, then charges the saved card. The card turns into a receipt or a refusal.
+- After the button, the page adds the outcome to that tool message (`shopper`: paid, canceled, or refused), so the assistant knows on the next turn.
+- 34 unit tests.
+
+Browser check:
+
+- 「幫我買第一個」 showed an order for an Essential USB-C 60W cable, HK$48. Nothing was charged until 「確認付款」 was pressed. It then paid, with record `09806f4524b7`.
+- Asked 「付款成功了嗎？」, the assistant quoted the same record.
+- A JOYROOM order was canceled. No payment was recorded, and the assistant said it was not paid.
+- Three cables at once (HK$182) were refused at once with no pay button. After a reload, the paid and canceled cards kept their state.
+
