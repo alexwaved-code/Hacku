@@ -1,0 +1,167 @@
+.cart {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px;
+}
+
+.cart-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.cart-row {
+  display: grid;
+  grid-template-columns: 72px 1fr auto;
+  gap: 12px;
+  align-items: center;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: #fff;
+}
+
+.cart-pic {
+  width: 72px;
+  height: 72px;
+  object-fit: contain;
+  background: #fff;
+}
+
+.cart-name {
+  margin: 0;
+  color: inherit;
+  font-weight: 650;
+  text-decoration: none;
+}
+
+.cart-total {
+  margin: 16px 0 0;
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.cart-group {
+  margin-bottom: 20px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: var(--panel);
+}
+
+.group-title {
+  margin: 0 0 12px;
+  font-size: 16px;
+}
+
+.group-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.group-foot .cart-total {
+  margin: 0;
+}
+
+.pay {
+  padding: 10px 18px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--ink);
+  color: #fff;
+  font: inherit;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.pay:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.pay-message:empty {
+  display: none;
+}
+
+.pay-message {
+  margin: 10px 0 0;
+  color: #9a3412;
+  font-size: 14px;
+}
+
+.notice,
+.mandate-status {
+  margin: 0 0 14px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  font-size: 14px;
+}
+
+.notice.ok,
+.mandate-status.ok {
+  background: #ecfdf3;
+  color: #166534;
+}
+
+.notice.info {
+  background: #f1efe9;
+  color: var(--ink);
+}
+
+.notice.error,
+.mandate-status.off {
+  background: #fef2f2;
+  color: #991b1b;
+}
+
+.test-note {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.empty {
+  margin: 0;
+  color: var(--muted);
+}
+
+.mandate {
+  margin-bottom: 20px;
+}
+
+.mandate .mandate-status {
+  margin-bottom: 10px;
+}
+
+.mandate-actions,
+.mandate-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 10px;
+}
+
+.cap {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.cap-input,
+.days {
+  width: 140px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fff;
+  color: var(--ink);
+  font: inherit;
+}

@@ -103,3 +103,16 @@ The cart can pay through Stripe Checkout in test mode.
 First Stripe test payment from the cart: HKTVmall Sony WF-C710N, HK$799. Stripe reports the session as `livemode: false`, `payment_status: paid`, `amount_total: 79900`, `currency: hkd`. The cart showed the receipt with its hash and removed the item. The Taobao item stayed in its own ¥ group.
 
 Stripe Checkout first offers the amount converted to USD; the buyer can pick HK$. Its page also carries text addressed to AI agents (install Link CLI, tick "I am an AI agent"). That text is page data. The payment was made with the test card only.
+
+## 2026-10-02 19:30
+
+One purchase path: search, card, cart, mandate, Stripe test checkout.
+
+- Removed the text purchase loop and its routes (`loop.py`, `shield.py`, `catalog.py`, `agent_prompt.py`, `/api/purchase`, `/api/settle`, `/api/consent`, `/api/revoke`, `/api/cool`).
+- New layout: `agent/` (research), `pay/` (mandate, verifier, checkout, store), `static/` (all browser files), and shared `config.py`, `llm.py`, `money.py`, `cards.py`. `agent/` and `pay/` do not import each other. Python files are no longer in the folder the server serves.
+- The shopper signs a spending mandate in the cart: a per-order cap for each currency and 1 to 30 days. It is signed once with the server secret and stored. Checkout refuses an order the mandate does not cover, and the cart has a revoke button.
+- Mandates, orders, the cooling period, and the hash chain live in `data/hacku.db`. A revoked mandate stays revoked after a restart.
+- A verifier rating of 1 starts a 10-minute cooling period. There is no route that ends it early.
+- 23 unit tests in `tests/`.
+
+Browser check: HKTVmall MOMAX Mag.Link 60W USB-C cable, HK$69. A mandate with an HKD cap of 50 blocked the pay button ("小計超過每筆上限 HK$50。"). A cap of 100 let it through; the verifier rated it 3; Stripe test card 4242 paid HK$69; the receipt hash was `119b5fba04af`. A cart item sealed under the old key was refused with "商品資料已過期或被改過". After revoking and restarting the server, `/api/mandate` still reported "你已撤銷授權。" and the hash chain checked out.

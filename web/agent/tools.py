@@ -5,7 +5,10 @@ from collections import OrderedDict
 from concurrent.futures import ThreadPoolExecutor
 from itertools import count
 
-from . import checkout, web
+import cards
+import money
+
+from . import web
 
 MAX_CARDS = 3
 CARD_TOOL = "show_products"
@@ -39,7 +42,7 @@ STORES = (
     (("price.com.hk", "格價"), "price.com.hk", "Price.com.hk", "hk"),
     (("fortress", "豐澤", "丰泽"), "fortress.com.hk", "豐澤", "hk"),
     (("broadway", "百老匯", "百老汇"), "broadway.com.hk", "百老匯", "hk"),
-    (("amazon.co.jp", "amazon japan", "日本亞馬遜", "日本亚马逊"), "amazon.co.jp", "Amazon 日本", "jp"),
+    (("amazon.co.jp", "amazon japan", "amazon jp", "日本亞馬遜", "日本亚马逊", "日亞"), "amazon.co.jp", "Amazon 日本", "jp"),
     (("amazon", "亞馬遜", "亚马逊"), "amazon.com", "Amazon", "us"),
     (("rakuten", "樂天", "乐天"), "rakuten.co.jp", "樂天", "jp"),
     (("shopee", "蝦皮", "虾皮"), "shopee.tw", "蝦皮", "tw"),
@@ -48,7 +51,6 @@ STORES = (
     (("ebay",), "ebay.com", "eBay", "us"),
     (("temu",), "temu.com", "Temu", "us"),
 )
-CURRENCY_SIGNS = {"HKD": "HK$", "TWD": "NT$", "USD": "US$", "SGD": "S$", "AUD": "A$", "CNY": "¥", "JPY": "JP¥", "KRW": "₩", "EUR": "€", "GBP": "£"}
 
 TOOL_SCHEMAS = [
     {
@@ -543,16 +545,12 @@ def _card(item):
         "observed_at": item.get("observed_at"),
         "flagged": bool(item.get("flagged")),
     }
-    card["sig"] = checkout.seal(card)
+    card["sig"] = cards.seal(card)
     return card
 
 
 def _price_text(price, currency):
-    if price is None:
-        return "已讀取"
-    amount = f"{price:,.0f}" if float(price).is_integer() else f"{price:,.2f}"
-    code = (currency or "HKD").upper()
-    return f"{CURRENCY_SIGNS[code]}{amount}" if code in CURRENCY_SIGNS else f"{code} {amount}"
+    return money.text(price, currency) or "已讀取"
 
 
 def _short_error(message):

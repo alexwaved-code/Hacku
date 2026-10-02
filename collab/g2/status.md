@@ -2,9 +2,9 @@
 
 - group: G2
 - human: Jacinto
-- updated: 2026-10-02 18:45
+- updated: 2026-10-02 19:30
 - doing: none
-- done: shopping research agent in `web/` (live Google Shopping and search via Serper, any store such as Taobao or Amazon, other countries, general chat, product cards, `ask_user` questions, no ordering); merged `g1` into `g2` so one server runs the research chat and G1's purchase loop
+- done: shopping research agent in `web/agent/`; cart checkout through Stripe test mode with a stored spending mandate (`web/pay/`); `web/` split into `agent/`, `pay/`, `static/`, shared `config.py`, `llm.py`, `money.py`, `cards.py`; 23 unit tests
 - blocked: none
-- next: run one Stripe test payment once a test key is in `web/.env`
-- ask_other: integrator — set the owner of `web/**`; see outbox 17:45
+- next: none
+- ask_other: G1 — rebase on `main` before editing `web/`; see outbox 19:30

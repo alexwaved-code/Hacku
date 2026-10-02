@@ -2,7 +2,6 @@ import gzip
 import html
 import ipaddress
 import json
-import os
 import re
 import socket
 import urllib.error
@@ -11,6 +10,8 @@ import urllib.request
 import zlib
 from datetime import datetime, timedelta, timezone
 from html.parser import HTMLParser
+
+import config
 
 USER_AGENT = (
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
@@ -126,7 +127,7 @@ def _serper(kind, query, num, region="hk"):
     query = str(query or "").strip()
     if not query:
         raise FetchError("Empty search query.")
-    key = os.environ.get("SERPER_API_KEY", "")
+    key = config.serper_key()
     if not key:
         raise FetchError("Web search is not set up. Add SERPER_API_KEY to web/.env.")
     gl, hl, _ = REGIONS[region_code(region)]

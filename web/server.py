@@ -1,64 +1,28 @@
 #!/usr/bin/env python3
+"""HTTP routes for the chat page and the cart. Static files come from web/static/."""
+
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
-from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 import json
-import os
 import socket
 import sys
 import traceback
-import urllib.error
-import urllib.request
 
-import loop
-from agent import checkout, harness
-from agent_prompt import explain_messages
+import config
+import llm
+from agent import harness
+from pay import checkout, mandate
 
-ROOT = Path(__file__).resolve().parent
-HOST = "127.0.0.1"
-PORT = 8765
 MAX_BODY = 600_000
 MAX_MESSAGES = 80
-HIDDEN_PREFIXES = ("/agent", "/server.py")
-PURCHASE_ROUTES = ("/api/purchase", "/api/settle", "/api/revoke", "/api/cool")
-
-
-def load_env(path):
-    if not path.is_file():
-        return
-    for raw in path.read_text(encoding="utf-8").splitlines():
-        line = raw.strip()
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-        key, value = line.split("=", 1)
-        os.environ[key.strip()] = value.strip()
-
-
-load_env(ROOT.parent / ".env")
-load_env(ROOT / ".env")
-
-
-def openai_base():
-    explicit = os.environ.get("OPENAI_BASE_URL", "").strip().rstrip("/")
-    if explicit:
-        return explicit
-    legacy = os.environ.get("API_BASE", "https://xh.v1api.cc").strip().rstrip("/")
-    return legacy if legacy.endswith("/v1") else legacy + "/v1"
-
-
-CONFIG = {
-    "base_url": openai_base(),
-    "api_key": os.environ.get("OPENAI_API_KEY") or os.environ.get("API_KEY", ""),
-    "model": os.environ.get("OPENAI_MODEL") or os.environ.get("MODEL") or "deepseek-v4.1-flash",
-    "timeout": 25,
-}
+PAY_ROUTES = ("/api/checkout", "/api/mandate", "/api/mandate/revoke")
 
 
 class Handler(SimpleHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
 
     def __init__(self, *args, **kwargs):
-        super().__init__(*args, directory=str(ROOT), **kwargs)
+        super().__init__(*args, directory=str(config.STATIC), **kwargs)
 
     def setup(self):
         super().setup()
@@ -74,12 +38,13 @@ class Handler(SimpleHTTPRequestHandler):
         super().log_message("%s", message)
 
     def do_GET(self):
-        if urlparse(self.path).path == "/api/checkout/status":
-            query = parse_qs(urlparse(self.path).query)
-            self.checkout_reply(lambda: checkout.status((query.get("session") or [""])[0]))
+        url = urlparse(self.path)
+        if url.path == "/api/checkout/status":
+            session = (parse_qs(url.query).get("session") or [""])[0]
+            self.pay_reply(lambda: checkout.status(session))
             return
-        if urlparse(self.path).path == "/api/consent":
-            self.send_json(200, loop.consent_view())
+        if url.path == "/api/mandate":
+            self.send_json(200, mandate.view())
             return
         if self.is_hidden():
             self.send_error(404)
@@ -93,29 +58,23 @@ class Handler(SimpleHTTPRequestHandler):
         super().do_HEAD()
 
     def is_hidden(self):
-        path = urlparse(self.path).path
-        if any(part.startswith(".") for part in path.split("/") if part):
-            return True
-        return path.startswith(HIDDEN_PREFIXES) or path.endswith(".py")
+        return any(part.startswith(".") for part in urlparse(self.path).path.split("/") if part)
 
     def do_POST(self):
         path = urlparse(self.path).path
-        if path == "/api/checkout":
-            self.checkout_route()
-            return
-        if path in PURCHASE_ROUTES:
-            self.purchase_route(path)
+        if path in PAY_ROUTES:
+            self.pay_reply(lambda: self.pay_action(path, self.read_json()))
             return
         if path != "/api/chat":
             self.send_error(404)
             return
-        if not CONFIG["api_key"]:
+        if not config.CHAT["api_key"]:
             self.send_json(503, {"error": "web/.env 缺少 OPENAI_API_KEY。"})
             return
 
         length = int(self.headers.get("Content-Length", "0"))
         if length <= 0 or length > MAX_BODY:
-            self.send_json(400, {"error": "Request is empty or too large."})
+            self.send_json(400, {"error": "請求是空的或太大。"})
             return
 
         try:
@@ -141,29 +100,38 @@ class Handler(SimpleHTTPRequestHandler):
                 raise harness.Aborted() from error
 
         try:
-            harness.run(CONFIG, messages, emit)
+            harness.run(config.CHAT, messages, emit)
         except harness.Aborted:
             return
-        except harness.UpstreamError as error:
+        except llm.UpstreamError as error:
             self.safe_emit(emit, {"type": "error", "message": str(error)})
         except Exception:
             traceback.print_exc(file=sys.stderr)
             self.safe_emit(emit, {"type": "error", "message": "助理發生內部錯誤。"})
 
-    def checkout_route(self):
+    def read_json(self):
         length = int(self.headers.get("Content-Length", "0") or "0")
-        if length <= 0 or length > MAX_BODY:
-            self.send_json(400, {"error": "Request is empty or too large."})
-            return
+        if length < 0 or length > MAX_BODY:
+            raise checkout.CheckoutError("請求太大。")
         try:
-            payload = json.loads(self.rfile.read(length).decode("utf-8"))
-        except (UnicodeDecodeError, json.JSONDecodeError):
-            self.send_json(400, {"error": "Request is not JSON."})
-            return
-        items = payload.get("items") if isinstance(payload, dict) else None
-        self.checkout_reply(lambda: checkout.create(items, CONFIG))
+            payload = json.loads(self.rfile.read(length).decode("utf-8") or "{}")
+        except (UnicodeDecodeError, json.JSONDecodeError) as error:
+            raise checkout.CheckoutError("請求不是 JSON。") from error
+        if not isinstance(payload, dict):
+            raise checkout.CheckoutError("請求格式不對。")
+        return payload
 
-    def checkout_reply(self, action):
+    def pay_action(self, path, payload):
+        if path == "/api/checkout":
+            return checkout.create(payload.get("items"))
+        if path == "/api/mandate/revoke":
+            return mandate.revoke()
+        try:
+            return mandate.issue(payload.get("caps"), payload.get("days"))
+        except mandate.MandateError as error:
+            raise checkout.CheckoutError(str(error)) from error
+
+    def pay_reply(self, action):
         try:
             result = action()
         except checkout.CheckoutError as error:
@@ -174,27 +142,7 @@ class Handler(SimpleHTTPRequestHandler):
             return
         except Exception:
             traceback.print_exc()
-            self.send_json(500, {"error": "結帳時發生錯誤，請再試一次。"})
-            return
-        self.send_json(200, result)
-
-    def purchase_route(self, path):
-        length = int(self.headers.get("Content-Length", "0") or "0")
-        if length < 0 or length > MAX_BODY:
-            self.send_json(400, {"error": "Request is too large."})
-            return
-        try:
-            payload = json.loads(self.rfile.read(length).decode("utf-8") or "{}")
-            if path == "/api/purchase":
-                result = purchase(payload)
-            elif path == "/api/settle":
-                result = loop.settle(str(payload.get("draftId") or ""))
-            elif path == "/api/cool":
-                result = loop.end_cooling(loop.SESSION)
-            else:
-                result = loop.revoke(loop.SESSION)
-        except Exception as error:
-            self.send_json(400, {"error": str(error)})
+            self.send_json(500, {"error": "付款服務發生錯誤，請再試一次。"})
             return
         self.send_json(200, result)
 
@@ -214,61 +162,22 @@ class Handler(SimpleHTTPRequestHandler):
         self.wfile.write(raw)
 
 
-def purchase(payload):
-    text = payload.get("message")
-    if not isinstance(text, str) or not text.strip():
-        raise ValueError("message is required")
-    turn = loop.run_turn(text.strip())
-    turn["note"] = explain(turn)
-    return turn
-
-
-def explain(turn):
-    if not CONFIG["api_key"]:
-        return turn["note"]
-    body = json.dumps(
-        {
-            "model": CONFIG["model"],
-            "temperature": 0,
-            "thinking": {"type": "disabled"},
-            "messages": explain_messages(turn),
-        }
-    ).encode("utf-8")
-    request = urllib.request.Request(
-        f"{CONFIG['base_url']}/chat/completions",
-        data=body,
-        headers={"Authorization": f"Bearer {CONFIG['api_key']}", "Content-Type": "application/json"},
-        method="POST",
-    )
-    try:
-        with urllib.request.urlopen(request, timeout=20) as response:
-            data = json.loads(response.read().decode("utf-8"))
-        sentence = data["choices"][0]["message"]["content"].strip()
-    except (urllib.error.URLError, KeyError, IndexError, TypeError, json.JSONDecodeError, TimeoutError, OSError):
-        return turn["note"]
-    if not sentence or len(sentence) > 320 or sentence.count("\n") > 0:
-        return turn["note"]
-    if any("\u4e00" <= character <= "\u9fff" for character in sentence):
-        return turn["note"]
-    return sentence
-
-
 def normalize_messages(raw):
     if not isinstance(raw, list) or not raw:
-        raise ValueError("messages must be a non-empty list.")
+        raise ValueError("對話紀錄格式不對。")
     raw = raw[-MAX_MESSAGES:]
 
     messages = []
     for item in raw:
         if not isinstance(item, dict):
-            raise ValueError("Each message must be an object.")
+            raise ValueError("對話紀錄格式不對。")
         role = item.get("role")
         if role == "user":
             content = item.get("content")
             if not isinstance(content, str) or not content.strip():
-                raise ValueError("Each user message needs text.")
+                raise ValueError("訊息不能是空的。")
             if len(content) > 8000:
-                raise ValueError("A message is too long.")
+                raise ValueError("訊息太長了。")
             messages.append({"role": "user", "content": content.strip()})
         elif role == "assistant":
             messages.append(normalize_assistant(item))
@@ -276,30 +185,30 @@ def normalize_messages(raw):
             call_id = item.get("tool_call_id")
             content = item.get("content")
             if not isinstance(call_id, str) or not isinstance(content, str) or len(content) > 40000:
-                raise ValueError("Invalid tool message.")
+                raise ValueError("工具紀錄格式不對。")
             messages.append({"role": "tool", "tool_call_id": call_id, "content": content})
         else:
-            raise ValueError("Invalid message role.")
+            raise ValueError("對話紀錄格式不對。")
 
     while messages and messages[0]["role"] != "user":
         messages.pop(0)
     if not messages:
-        raise ValueError("The conversation needs a user message.")
+        raise ValueError("對話需要至少一則你的訊息。")
     return messages
 
 
 def normalize_assistant(item):
     content = item.get("content")
     if content is not None and not isinstance(content, str):
-        raise ValueError("Invalid assistant message.")
+        raise ValueError("助理紀錄格式不對。")
     if isinstance(content, str) and len(content) > 20000:
-        raise ValueError("An assistant message is too long.")
+        raise ValueError("助理紀錄太長了。")
     message = {"role": "assistant", "content": content or None}
 
     calls = item.get("tool_calls")
     if calls:
         if not isinstance(calls, list) or len(calls) > 8:
-            raise ValueError("Invalid tool calls.")
+            raise ValueError("工具紀錄格式不對。")
         clean = []
         for call in calls:
             function = call.get("function") if isinstance(call, dict) else None
@@ -309,7 +218,7 @@ def normalize_assistant(item):
                 or not isinstance(function.get("name"), str)
                 or not isinstance(function.get("arguments", ""), str)
             ):
-                raise ValueError("Invalid tool call.")
+                raise ValueError("工具紀錄格式不對。")
             clean.append(
                 {
                     "id": call["id"],
@@ -324,15 +233,17 @@ def normalize_assistant(item):
 
 
 def main():
-    server = ThreadingHTTPServer((HOST, PORT), Handler)
-    print(f"http://{HOST}:{PORT}/", flush=True)
-    if CONFIG["api_key"]:
-        print(f"model {CONFIG['model']}", flush=True)
+    server = ThreadingHTTPServer((config.HOST, config.PORT), Handler)
+    print(f"{config.ORIGIN}/", flush=True)
+    if config.CHAT["api_key"]:
+        print(f"model {config.CHAT['model']}", flush=True)
     else:
         print("Missing OPENAI_API_KEY. Copy web/.env.example to web/.env", flush=True)
-    if not os.environ.get("SERPER_API_KEY"):
+    if not config.VERIFY_SEPARATE:
+        print("No VERIFY_* settings. The chat model also rates listings at checkout.", flush=True)
+    if not config.serper_key():
         print("Missing SERPER_API_KEY. Live product search is off.", flush=True)
-    if not os.environ.get("STRIPE_SECRET_KEY", "").startswith(("sk_test_", "rk_test_")):
+    if not config.stripe_key().startswith(("sk_test_", "rk_test_")):
         print("No Stripe test key. Cart checkout is off.", flush=True)
     server.serve_forever()
 

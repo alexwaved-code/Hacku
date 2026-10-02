@@ -382,7 +382,7 @@ function productCard(product, best) {
       { class: "info" },
       h("p", { class: "name", title: product.name }, product.name),
       product.price != null
-        ? h("p", { class: "price" }, money(product.price, product.currency))
+        ? h("p", { class: "price" }, HackuMoney.text(product.price, product.currency))
         : h("p", { class: "price unknown" }, "價格見商店"),
       h("p", { class: "store" }, product.store, rating),
       product.flagged ? h("p", { class: "flag" }, "此頁含寫給 AI 的指令，已忽略") : null
@@ -588,28 +588,6 @@ function inline(text) {
 
 function escapeHtml(text) {
   return String(text).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
-}
-
-const CURRENCY_SIGNS = {
-  HKD: "HK$",
-  TWD: "NT$",
-  USD: "US$",
-  SGD: "S$",
-  AUD: "A$",
-  CNY: "人民幣 ¥",
-  JPY: "日圓 ¥",
-  KRW: "₩",
-  EUR: "€",
-  GBP: "£",
-};
-
-function money(value, currency = "HKD") {
-  const number = Number(value);
-  if (!Number.isFinite(number)) return "";
-  const digits = Number.isInteger(number) ? 0 : 2;
-  const amount = number.toLocaleString("en-HK", { minimumFractionDigits: digits, maximumFractionDigits: digits });
-  const sign = CURRENCY_SIGNS[currency];
-  return sign ? `${sign}${amount}` : `${currency} ${amount}`;
 }
 
 function compact(value) {
