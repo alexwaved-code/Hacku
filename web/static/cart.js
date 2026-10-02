@@ -3,6 +3,8 @@ const PENDING_KEY = "hacku.checkout";
 const DAY_CHOICES = [1, 7, 30];
 
 let mandate = null;
+let card = null;
+let orders = null;
 let editing = false;
 let notice = null;
 
@@ -29,13 +31,53 @@ function render() {
   const all = groups(items);
   cart.replaceChildren();
   if (notice) cart.append(el("p", `notice ${notice.kind}`, notice.text));
-  cart.append(mandateBlock(all));
+  cart.append(mandateBlock(all), cardBlock());
   if (!items.length) {
-    cart.append(el("p", "empty", "購物車是空的。回到對話，按商品卡右下角的購物車圖示。"));
-    return;
+    cart.append(el("p", "empty", "購物車是空的。回到對話，按商品卡右下角的購物車圖示，或直接請助理幫你買。"));
+  } else {
+    for (const group of all) cart.append(groupBlock(group));
+    cart.append(el("p", "test-note", "Stripe 測試模式：卡號 4242 4242 4242 4242，任何未來日期與 CVC。不會扣真錢。"));
   }
-  for (const group of all) cart.append(groupBlock(group));
-  cart.append(el("p", "test-note", "Stripe 測試模式：卡號 4242 4242 4242 4242，任何未來日期與 CVC。不會扣真錢。"));
+  cart.append(ordersBlock());
+}
+
+function cardBlock() {
+  const box = el("section", "wallet");
+  if (!card) return box;
+  if (card.saved) {
+    box.append(
+      el("p", "wallet-line", `代理人付款卡：${card.label}。助理準備好訂單後，你在對話按「確認付款」就用這張卡付。`),
+      button("pill", "移除付款卡", () => send("/api/card/forget", {}, "已移除付款卡，對話裡的訂單不能再付款。", (data) => (card = data)))
+    );
+  } else {
+    box.append(
+      el("p", "wallet-line", "還沒有代理人付款卡。存一張後，你在對話說「幫我買」，助理會在授權上限內準備訂單，你按「確認付款」就付款。"),
+      button("pay", "儲存 Stripe 測試卡（Visa 4242）", () => send("/api/card", {}, "已儲存付款卡。", (data) => (card = data)))
+    );
+  }
+  return box;
+}
+
+function ordersBlock() {
+  const box = el("section", "orders");
+  if (!orders || !orders.orders.length) return box;
+  box.append(el("h2", "group-title", "付款紀錄"));
+  const list = el("ul", "order-list");
+  for (const order of orders.orders) {
+    const names = order.items.map((entry) => entry.name).join("、");
+    const when = order.at.replace("T", " ").slice(0, 16);
+    list.append(
+      el(
+        "li",
+        "order-row",
+        el("p", "order-main", `${money(order.total, order.currency)} · ${order.via === "agent" ? "助理付款" : "購物車結帳"} · ${when}`),
+        el("p", "order-items", names),
+        order.hash ? el("p", "order-hash", `紀錄 ${order.hash.slice(0, 12)}`) : null
+      )
+    );
+  }
+  box.append(list, el("p", orders.chain_ok ? "chain ok" : "chain off", orders.chain_ok ? "紀錄鏈檢查通過。" : "紀錄鏈對不上，可能被改過。"));
+  return box;
 }
 
 function mandateBlock(all) {
@@ -50,7 +92,7 @@ function mandateBlock(all) {
       editing = true;
       render();
     });
-    const revoke = button("pill", "撤銷授權", () => send("/api/mandate/revoke", {}, "已撤銷授權，代理人不能再開啟結帳。"));
+    const revoke = button("pill", "撤銷授權", () => send("/api/mandate/revoke", {}, "已撤銷授權，助理和購物車都不能再付款。"));
     box.append(
       el("p", "mandate-status ok", `付款授權有效：每筆上限 ${caps}。${mandate.detail}`),
       el("div", "mandate-actions", change, revoke)
@@ -106,7 +148,7 @@ function mandateForm(all) {
   return form;
 }
 
-async function send(path, body, okText) {
+async function send(path, body, okText, apply = (data) => (mandate = data)) {
   try {
     const response = await fetch(path, {
       method: "POST",
@@ -114,8 +156,8 @@ async function send(path, body, okText) {
       body: JSON.stringify(body),
     });
     const data = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(data.error || "授權沒有更新，請再試一次。");
-    mandate = data;
+    if (!response.ok) throw new Error(data.error || "沒有更新，請再試一次。");
+    apply(data);
     notice = { kind: "ok", text: okText };
   } catch (error) {
     notice = { kind: "error", text: error.message };
@@ -203,13 +245,17 @@ async function checkout(group, pay, message) {
   }
 }
 
-async function loadMandate() {
+async function load(path) {
   try {
-    const response = await fetch("/api/mandate");
-    mandate = response.ok ? await response.json() : null;
+    const response = await fetch(path);
+    return response.ok ? await response.json() : null;
   } catch {
-    mandate = null;
+    return null;
   }
+}
+
+async function loadAll() {
+  [mandate, card, orders] = await Promise.all([load("/api/mandate"), load("/api/card"), load("/api/orders")]);
 }
 
 async function finishReturn() {
@@ -256,4 +302,6 @@ function el(tag, className, ...children) {
   return node;
 }
 
-Promise.all([loadMandate(), finishReturn()]).then(render);
+finishReturn()
+  .then(loadAll)
+  .then(render);

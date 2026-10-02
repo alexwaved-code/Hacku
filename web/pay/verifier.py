@@ -5,6 +5,7 @@ VERIFY_* in web/.env picks a separate model; without it the chat model does the 
 """
 
 import json
+from concurrent.futures import ThreadPoolExecutor
 
 import config
 import llm
@@ -35,7 +36,7 @@ RATE_LISTING = {
 
 
 def verify_products(products, complete=None):
-    """Rate each product. Only a tool rating of 3 is acceptable."""
+    """Rate each product in its own call, all at once. Only a tool rating of 3 is acceptable."""
     pending = [public_product(product) for product in products]
     if not pending:
         return []
@@ -43,7 +44,12 @@ def verify_products(products, complete=None):
         if not config.VERIFY["api_key"]:
             return [unrated(product, "驗證模型沒有設定。") for product in pending]
         complete = call_model
+    with ThreadPoolExecutor(max_workers=min(len(pending), 5)) as pool:
+        rated = pool.map(lambda product: verify_group([product], complete)[0], pending)
+        return list(rated)
 
+
+def verify_group(pending, complete):
     ratings = {}
     messages = [
         {"role": "system", "content": VERIFIER_PROMPT},

@@ -1,63 +1,44 @@
-"""Stripe test-mode checkout for the cart.
+"""Payments in Stripe test mode, from the cart or from the agent's order card.
 
-A checkout opens only when every card seal matches, the mandate covers the order total,
+Both paths pass the same gates: every card seal matches, the mandate covers the order total,
 no cooling period is open, and the verifier rates every item 3.
-Only Stripe test keys are accepted, so no real money moves.
+The cart opens a Stripe Checkout page. The agent's order is quoted first and charged to the saved card
+only after the shopper presses pay.
 """
 
+import hashlib
 import json
 import re
-import urllib.error
-import urllib.parse
-import urllib.request
+import time
 from datetime import datetime, timedelta
 
 import cards
 import config
 import money
 
-from . import mandate, store, verifier
+from . import mandate, store, stripe_api, verifier, wallet
+from .stripe_api import CheckoutError
 
-STRIPE_API = "https://api.stripe.com/v1"
-TIMEOUT = 20
 MAX_ITEMS = 10
 MAX_QTY = 10
 COOLING = timedelta(minutes=10)
+REPEAT_WINDOW = 120
 SESSION_ID = re.compile(r"^cs_test_[A-Za-z0-9]{10,200}$")
 VERDICTS = {"reject": "拒絕", "reconsider": "需重新考慮"}
 
 
-class CheckoutError(Exception):
-    def __init__(self, message, status=400, detail=None):
-        super().__init__(message)
-        self.status = status
-        self.detail = detail
-
-
 def create(items):
-    key = _stripe_key()
+    """Cart path: open a Stripe Checkout page for one store and currency."""
+    stripe_api.key()
     lines = _check_items(items)
-    currency = lines[0]["currency"]
-    total = round(sum(line["price"] * line["qty"] for line in lines), 2)
+    currency, total = lines[0]["currency"], _total(lines)
     at = mandate.now()
-
-    problem = mandate.problem(currency, total, at)
-    if problem:
-        raise CheckoutError(f"不能付款：{problem}", 403)
-    until = cooling_until(at)
-    if until:
-        raise CheckoutError(f"上一次結帳有商品被驗證拒絕，冷靜期到 {until:%H:%M} 才結束。", 403)
-
-    ratings = verifier.verify_products(_products(lines))
-    if any(rating["rating"] == 1 for rating in ratings):
-        _start_cooling(at)
-    failed = [rating for rating in ratings if rating["rating"] != 3]
-    if failed:
-        names = "、".join(f"{rating['name'][:24]}（{VERDICTS.get(rating['verdict'], '未評分')}）" for rating in failed)
-        raise CheckoutError(f"驗證沒有通過：{names}", 409, {"ratings": ratings})
+    ratings = _approve(lines, currency, total, at)
 
     form = [
         ("mode", "payment"),
+        ("payment_method_types[]", "card"),
+        ("adaptive_pricing[enabled]", "false"),
         ("success_url", f"{config.ORIGIN}/cart.html?paid={{CHECKOUT_SESSION_ID}}"),
         ("cancel_url", f"{config.ORIGIN}/cart.html?canceled=1"),
         ("metadata[source]", "hacku-cart"),
@@ -73,23 +54,83 @@ def create(items):
         ]
         if line["image"]:
             form.append((f"{prefix}[price_data][product_data][images][0]", line["image"]))
-    session = _stripe("POST", "/checkout/sessions", key, form)
+    session = stripe_api.call("POST", "/checkout/sessions", form)
 
-    items = [{"id": line["id"], "name": line["name"], "store": line["store"], "qty": line["qty"]} for line in lines]
     with store.db() as conn:
-        conn.execute(
-            "INSERT INTO orders (id, currency, total, items, created_at) VALUES (?, ?, ?, ?, ?)",
-            (session["id"], currency, total, json.dumps(items, ensure_ascii=False), at.isoformat(timespec="seconds")),
-        )
+        _record(conn, session["id"], lines, currency, total, at, "cart")
         store.append(conn, "checkout_opened", {"session": session["id"], "currency": currency, "total": total}, at)
     return {"url": session["url"], "id": session["id"], "ratings": ratings}
+
+
+def quote(items):
+    """Agent path, step one: check the order against the card, mandate, and cooling period. Nothing is charged."""
+    stripe_api.key()
+    lines = _check_items(items)
+    currency, total = lines[0]["currency"], _total(lines)
+    label = _saved_card()[2]
+    _gates(currency, total, mandate.now())
+    return {
+        "currency": currency,
+        "total": total,
+        "card": label,
+        "cap": (mandate.view().get("caps") or {}).get(currency),
+        "items": _summary(lines),
+    }
+
+
+def charge(items):
+    """Agent path, step two: the shopper pressed pay. Rate the items, then charge the saved card."""
+    stripe_api.key()
+    lines = _check_items(items)
+    currency, total = lines[0]["currency"], _total(lines)
+    customer, method, label = _saved_card()
+    at = mandate.now()
+    ratings = _approve(lines, currency, total, at)
+
+    fingerprint = json.dumps([[line["url"], line["price"], line["qty"]] for line in lines], ensure_ascii=False)
+    window = int(time.time() // REPEAT_WINDOW)
+    intent = stripe_api.call(
+        "POST",
+        "/payment_intents",
+        [
+            ("amount", str(money.minor(total, currency))),
+            ("currency", currency.lower()),
+            ("customer", customer),
+            ("payment_method", method),
+            ("off_session", "true"),
+            ("confirm", "true"),
+            ("description", "、".join(line["name"][:60] for line in lines)[:300]),
+            ("metadata[source]", "hacku-agent"),
+        ],
+        idempotency=hashlib.sha256(f"{fingerprint}|{window}".encode("utf-8")).hexdigest(),
+    )
+    if intent.get("status") != "succeeded":
+        raise CheckoutError(f"Stripe 沒有完成扣款（{intent.get('status')}）。", 402)
+
+    with store.db() as conn:
+        order = conn.execute("SELECT hash FROM orders WHERE id = ?", (intent["id"],)).fetchone()
+        if order:
+            receipt = order["hash"]
+        else:
+            _record(conn, intent["id"], lines, currency, total, at, "agent")
+            receipt = store.append(conn, "paid", {"payment": intent["id"], "currency": currency, "total": total, "by": "agent"}, at)
+            conn.execute("UPDATE orders SET paid = 1, hash = ? WHERE id = ?", (receipt, intent["id"]))
+    return {
+        "paid": True,
+        "id": intent["id"],
+        "amount": total,
+        "currency": currency,
+        "card": label,
+        "hash": receipt,
+        "items": _summary(lines),
+        "ratings": ratings,
+    }
 
 
 def status(session_id):
     if not SESSION_ID.match(str(session_id or "")):
         raise CheckoutError("付款編號格式不對。")
-    key = _stripe_key()
-    session = _stripe("GET", f"/checkout/sessions/{session_id}", key)
+    session = stripe_api.call("GET", f"/checkout/sessions/{session_id}")
     paid = session.get("payment_status") == "paid"
     currency = str(session.get("currency") or "").upper()
     with store.db() as conn:
@@ -97,7 +138,7 @@ def status(session_id):
         receipt = order["hash"] if order else None
         if paid and order and not order["paid"]:
             receipt = store.append(
-                conn, "paid", {"session": session_id, "currency": currency, "total": order["total"]}, mandate.now()
+                conn, "paid", {"session": session_id, "currency": currency, "total": order["total"], "by": "cart"}, mandate.now()
             )
             conn.execute("UPDATE orders SET paid = 1, hash = ? WHERE id = ?", (receipt, session_id))
     amount = session.get("amount_total")
@@ -111,6 +152,27 @@ def status(session_id):
     }
 
 
+def recent(limit=8):
+    with store.db() as conn:
+        rows = conn.execute("SELECT * FROM orders WHERE paid = 1 ORDER BY created_at DESC, rowid DESC LIMIT ?", (limit,)).fetchall()
+        intact = store.chain_ok(conn)
+    return {
+        "chain_ok": intact,
+        "orders": [
+            {
+                "id": row["id"],
+                "currency": row["currency"],
+                "total": row["total"],
+                "items": json.loads(row["items"]),
+                "hash": row["hash"],
+                "via": row["via"],
+                "at": row["created_at"],
+            }
+            for row in rows
+        ],
+    }
+
+
 def cooling_until(at):
     with store.db() as conn:
         value = store.get(conn, "cooling_until")
@@ -120,11 +182,55 @@ def cooling_until(at):
     return until if at < until else None
 
 
+def _saved_card():
+    saved = wallet.current()
+    if not saved:
+        raise CheckoutError("還沒有儲存付款卡。請到購物車按「儲存 Stripe 測試卡」。", 403)
+    return saved
+
+
+def _gates(currency, total, at):
+    problem = mandate.problem(currency, total, at)
+    if problem:
+        raise CheckoutError(f"不能付款：{problem}", 403)
+    until = cooling_until(at)
+    if until:
+        raise CheckoutError(f"上一次結帳有商品被驗證拒絕，冷靜期到 {until:%H:%M} 才結束。", 403)
+
+
+def _approve(lines, currency, total, at):
+    _gates(currency, total, at)
+    ratings = verifier.verify_products(_products(lines))
+    if any(rating["rating"] == 1 for rating in ratings):
+        _start_cooling(at)
+    failed = [rating for rating in ratings if rating["rating"] != 3]
+    if failed:
+        names = "、".join(f"{rating['name'][:24]}（{VERDICTS.get(rating['verdict'], '未評分')}）" for rating in failed)
+        raise CheckoutError(f"驗證沒有通過：{names}", 409, {"ratings": ratings})
+    return ratings
+
+
+def _record(conn, order_id, lines, currency, total, at, via):
+    items = [{"id": line["id"], "name": line["name"], "store": line["store"], "qty": line["qty"]} for line in lines]
+    conn.execute(
+        "INSERT OR IGNORE INTO orders (id, currency, total, items, created_at, via) VALUES (?, ?, ?, ?, ?, ?)",
+        (order_id, currency, total, json.dumps(items, ensure_ascii=False), at.isoformat(timespec="seconds"), via),
+    )
+
+
 def _start_cooling(at):
     until = at + COOLING
     with store.db() as conn:
         store.put(conn, "cooling_until", until.isoformat(timespec="seconds"))
         store.append(conn, "cooling_started", {"until": until.isoformat(timespec="seconds")}, at)
+
+
+def _summary(lines):
+    return [{"name": line["name"], "store": line["store"], "qty": line["qty"], "price": line["price"]} for line in lines]
+
+
+def _total(lines):
+    return round(sum(line["price"] * line["qty"] for line in lines), 2)
 
 
 def _check_items(items):
@@ -175,33 +281,3 @@ def _products(lines):
         }
         for index, line in enumerate(lines)
     ]
-
-
-def _stripe(method, path, key, form=None):
-    data = urllib.parse.urlencode(form).encode("utf-8") if form is not None else None
-    request = urllib.request.Request(
-        f"{STRIPE_API}{path}",
-        data=data,
-        method=method,
-        headers={"Authorization": f"Bearer {key}", "Content-Type": "application/x-www-form-urlencoded"},
-    )
-    try:
-        with urllib.request.urlopen(request, timeout=TIMEOUT) as response:
-            return json.loads(response.read().decode("utf-8"))
-    except urllib.error.HTTPError as error:
-        try:
-            message = json.loads(error.read().decode("utf-8"))["error"]["message"]
-        except Exception:
-            message = f"HTTP {error.code}"
-        raise CheckoutError(f"Stripe 拒絕了這次請求：{message}", 502) from error
-    except (urllib.error.URLError, TimeoutError, OSError, json.JSONDecodeError) as error:
-        raise CheckoutError("連不上 Stripe，請再試一次。", 502) from error
-
-
-def _stripe_key():
-    key = config.stripe_key()
-    if not key:
-        raise CheckoutError("web/.env 缺少 STRIPE_SECRET_KEY。請放 sk_test_ 開頭的測試金鑰。", 503)
-    if not key.startswith(("sk_test_", "rk_test_")):
-        raise CheckoutError("這個頁面只接受 Stripe 測試金鑰（sk_test_），不收真錢。", 403)
-    return key

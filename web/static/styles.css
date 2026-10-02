@@ -841,3 +841,141 @@ a.card:hover {
     transition: none !important;
   }
 }
+
+.receipts:empty {
+  display: none;
+}
+
+.receipts {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.receipt {
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1px solid var(--line);
+  animation: rise 0.25s ease both;
+}
+
+.receipt.paid {
+  background: #ecfdf3;
+  border-color: #bbe5c8;
+  color: #14532d;
+}
+
+.receipt.refused {
+  background: #fef2f2;
+  border-color: #f3c7c7;
+  color: #7f1d1d;
+}
+
+.receipt.order {
+  background: var(--panel);
+  border-color: var(--ink);
+  color: var(--ink);
+}
+
+.receipt.canceled {
+  background: var(--paper);
+  color: var(--muted);
+}
+
+.order-lines {
+  margin: 0 0 8px;
+  padding: 0;
+  list-style: none;
+  font-size: 14px;
+}
+
+.order-lines li {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  column-gap: 12px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.order-lines .receipt-store {
+  grid-column: 1;
+  margin-left: 0;
+  font-size: 12px;
+}
+
+.order-price {
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.order-total {
+  display: flex;
+  justify-content: space-between;
+  margin: 0 0 8px;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.order-message {
+  margin-top: 6px;
+  color: var(--muted);
+}
+
+.order-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.order-pay {
+  flex: 1;
+  padding: 10px 14px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--ink);
+  color: var(--panel);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.order-pay:disabled,
+.order-actions .pill:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.receipt-title {
+  margin: 0 0 6px;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.receipt-items {
+  margin: 0 0 6px;
+  padding-left: 18px;
+  font-size: 14px;
+}
+
+.receipt-store {
+  margin-left: 8px;
+  opacity: 0.7;
+}
+
+.receipt-line {
+  margin: 0;
+  font-size: 13px;
+}
+
+.receipt-line.mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.receipt-link {
+  display: inline-block;
+  margin-top: 6px;
+  color: inherit;
+  font-size: 13px;
+  font-weight: 600;
+}
