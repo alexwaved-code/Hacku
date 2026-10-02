@@ -1,11 +1,11 @@
 import http.client
 import json
-import re
 import time
-import urllib.error
-import urllib.request
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta, timezone
+
+import llm
+from llm import Busy, UpstreamError
 
 from .tools import ASK_TOOL, CARD_TOOL, TOOL_SCHEMAS, clean_questions, has_refs, run_tool, tool_label
 
@@ -13,7 +13,6 @@ MAX_ROUNDS = 7
 MAX_PARALLEL = 4
 FALLBACK_TEXT = "我這次沒整理出答案，換個說法再問一次？"
 BUSY_TEXT = "模型服務暫時忙碌，請稍後再試一次。"
-BUSY = re.compile(r"retry later|reduce the request|could not be completed|rate.?limit|overload|too many requests|busy", re.IGNORECASE)
 OLD_TOOL_CHARS = 1200
 
 SYSTEM_PROMPT_TEMPLATE = """You are a friendly assistant inside a chat page. Your strength is researching real products on the live web, but you also chat and answer any other question. The user is in Hong Kong unless they say otherwise. Now: {now} (Hong Kong time).
@@ -56,15 +55,7 @@ class Aborted(Exception):
     pass
 
 
-class UpstreamError(Exception):
-    pass
-
-
 class Stalled(Exception):
-    pass
-
-
-class Busy(Exception):
     pass
 
 
@@ -226,13 +217,12 @@ def _stream_round(config, messages, emit, tool_choice):
         "model": config["model"],
         "messages": messages,
         "tools": TOOL_SCHEMAS,
-        "stream": True,
         "max_tokens": 250,
         "thinking": {"type": "disabled"},
         "tool_choice": tool_choice,
     }
 
-    response = _open(config, body)
+    response = llm.open_stream(config, body)
     text = []
     calls = {}
     try:
@@ -248,8 +238,8 @@ def _stream_round(config, messages, emit, tool_choice):
             except json.JSONDecodeError:
                 continue
             if chunk.get("error"):
-                message = _error_text(chunk)
-                if BUSY.search(message):
+                message = llm.error_text(chunk)
+                if llm.BUSY.search(message):
                     raise Busy(message)
                 raise UpstreamError(message or "模型回傳錯誤。")
             choices = chunk.get("choices") or []
@@ -283,61 +273,9 @@ def _stream_round(config, messages, emit, tool_choice):
     return "".join(text), [calls[key] for key in sorted(calls)]
 
 
-def _open(config, body):
-    data = json.dumps(body, ensure_ascii=False).encode("utf-8")
-    for attempt in range(2):
-        request = urllib.request.Request(
-            f"{config['base_url']}/chat/completions",
-            data=data,
-            method="POST",
-            headers={
-                "Authorization": f"Bearer {config['api_key']}",
-                "Content-Type": "application/json",
-                "Accept": "text/event-stream",
-            },
-        )
-        try:
-            return urllib.request.urlopen(request, timeout=config.get("timeout", 60))
-        except urllib.error.HTTPError as error:
-            message = _read_http_error(error)
-            if error.code == 429 or BUSY.search(message):
-                raise Busy(message) from error
-            if error.code >= 500 and attempt == 0:
-                continue
-            raise UpstreamError(message) from error
-        except (urllib.error.URLError, http.client.HTTPException, TimeoutError, OSError):
-            if attempt == 0:
-                continue
-    raise UpstreamError("連不上模型，請再試一次。")
-
-
 def _parse_args(raw):
     try:
         value = json.loads(raw or "{}")
     except json.JSONDecodeError:
         return {}
     return value if isinstance(value, dict) else {}
-
-
-def _read_http_error(error):
-    try:
-        body = json.loads(error.read().decode("utf-8"))
-    except Exception:
-        return f"模型請求失敗（{error.code}）。"
-    return _error_text(body) or f"模型請求失敗（{error.code}）。"
-
-
-def _error_text(body):
-    if not isinstance(body, dict):
-        return ""
-    err = body.get("error")
-    if isinstance(err, dict):
-        for key in ("message", "msg", "detail"):
-            if isinstance(err.get(key), str) and err[key].strip():
-                return err[key]
-    if isinstance(err, str) and err.strip():
-        return err
-    for key in ("message", "msg"):
-        if isinstance(body.get(key), str) and body[key].strip():
-            return body[key]
-    return ""

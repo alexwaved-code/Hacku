@@ -7,3 +7,5 @@ dist/
 collab/.agent-id
 *.log
 .vite/
+__pycache__/
+web/data/

@@ -1,38 +1,30 @@
 """Stripe test-mode checkout for the cart.
 
-Product cards carry a server seal, so the browser cannot change a price before checkout.
-A checkout opens only while the consent credential is valid and the verifier rates every item 3.
+A checkout opens only when every card seal matches, the mandate covers the order total,
+no cooling period is open, and the verifier rates every item 3.
 Only Stripe test keys are accepted, so no real money moves.
 """
 
-import hashlib
-import hmac
 import json
-import os
 import re
-import secrets
-import threading
 import urllib.error
 import urllib.parse
 import urllib.request
+from datetime import datetime, timedelta
 
-import loop
-import shield
-import verifier
+import cards
+import config
+import money
+
+from . import mandate, store, verifier
 
 STRIPE_API = "https://api.stripe.com/v1"
-ORIGIN = "http://127.0.0.1:8765"
 TIMEOUT = 20
 MAX_ITEMS = 10
 MAX_QTY = 10
-ZERO_DECIMAL = {"JPY", "KRW"}
-CURRENCIES = {"HKD", "TWD", "USD", "SGD", "AUD", "CNY", "JPY", "KRW", "EUR", "GBP"}
-SEALED_FIELDS = ("name", "store", "price", "currency", "url", "image")
+COOLING = timedelta(minutes=10)
 SESSION_ID = re.compile(r"^cs_test_[A-Za-z0-9]{10,200}$")
 VERDICTS = {"reject": "拒絕", "reconsider": "需重新考慮"}
-_FALLBACK_KEY = secrets.token_bytes(32)
-_orders = {}
-_lock = threading.Lock()
 
 
 class CheckoutError(Exception):
@@ -42,26 +34,23 @@ class CheckoutError(Exception):
         self.detail = detail
 
 
-def seal(card):
-    """Signature over the fields a checkout charges for."""
-    values = [card.get(field) for field in SEALED_FIELDS]
-    values = [float(value) if isinstance(value, (int, float)) and not isinstance(value, bool) else value for value in values]
-    payload = json.dumps(values, ensure_ascii=False, separators=(",", ":"))
-    return hmac.new(_card_key(), payload.encode("utf-8"), hashlib.sha256).hexdigest()
-
-
-def create(items, model_config):
+def create(items):
     key = _stripe_key()
     lines = _check_items(items)
     currency = lines[0]["currency"]
+    total = round(sum(line["price"] * line["qty"] for line in lines), 2)
+    at = mandate.now()
 
-    problem = loop.consent_problem()
+    problem = mandate.problem(currency, total, at)
     if problem:
-        raise CheckoutError(f"授權無效，不能付款：{problem}", 403)
-    if loop.SESSION.cooling_until and loop.now_hk() < loop.SESSION.cooling_until:
-        raise CheckoutError("冷靜期還沒結束，暫時不能付款。", 403)
+        raise CheckoutError(f"不能付款：{problem}", 403)
+    until = cooling_until(at)
+    if until:
+        raise CheckoutError(f"上一次結帳有商品被驗證拒絕，冷靜期到 {until:%H:%M} 才結束。", 403)
 
-    ratings = _verify(lines, model_config)
+    ratings = verifier.verify_products(_products(lines))
+    if any(rating["rating"] == 1 for rating in ratings):
+        _start_cooling(at)
     failed = [rating for rating in ratings if rating["rating"] != 3]
     if failed:
         names = "、".join(f"{rating['name'][:24]}（{VERDICTS.get(rating['verdict'], '未評分')}）" for rating in failed)
@@ -69,8 +58,8 @@ def create(items, model_config):
 
     form = [
         ("mode", "payment"),
-        ("success_url", f"{ORIGIN}/cart.html?paid={{CHECKOUT_SESSION_ID}}"),
-        ("cancel_url", f"{ORIGIN}/cart.html?canceled=1"),
+        ("success_url", f"{config.ORIGIN}/cart.html?paid={{CHECKOUT_SESSION_ID}}"),
+        ("cancel_url", f"{config.ORIGIN}/cart.html?canceled=1"),
         ("metadata[source]", "hacku-cart"),
     ]
     for index, line in enumerate(lines):
@@ -78,7 +67,7 @@ def create(items, model_config):
         form += [
             (f"{prefix}[quantity]", str(line["qty"])),
             (f"{prefix}[price_data][currency]", currency.lower()),
-            (f"{prefix}[price_data][unit_amount]", str(_minor(line["price"], currency))),
+            (f"{prefix}[price_data][unit_amount]", str(money.minor(line["price"], currency))),
             (f"{prefix}[price_data][product_data][name]", line["name"][:250]),
             (f"{prefix}[price_data][product_data][description]", line["store"][:250] or "Store"),
         ]
@@ -86,18 +75,13 @@ def create(items, model_config):
             form.append((f"{prefix}[price_data][product_data][images][0]", line["image"]))
     session = _stripe("POST", "/checkout/sessions", key, form)
 
-    total = round(sum(line["price"] * line["qty"] for line in lines), 2)
-    order = {
-        "id": session["id"],
-        "currency": currency,
-        "total": total,
-        "items": [{"id": line["id"], "name": line["name"], "store": line["store"], "qty": line["qty"]} for line in lines],
-        "paid": False,
-        "hash": None,
-    }
-    with _lock:
-        _orders[session["id"]] = order
-    shield.seal(loop.SESSION, "checkout", {"session": session["id"], "currency": currency, "total": total})
+    items = [{"id": line["id"], "name": line["name"], "store": line["store"], "qty": line["qty"]} for line in lines]
+    with store.db() as conn:
+        conn.execute(
+            "INSERT INTO orders (id, currency, total, items, created_at) VALUES (?, ?, ?, ?, ?)",
+            (session["id"], currency, total, json.dumps(items, ensure_ascii=False), at.isoformat(timespec="seconds")),
+        )
+        store.append(conn, "checkout_opened", {"session": session["id"], "currency": currency, "total": total}, at)
     return {"url": session["url"], "id": session["id"], "ratings": ratings}
 
 
@@ -108,22 +92,39 @@ def status(session_id):
     session = _stripe("GET", f"/checkout/sessions/{session_id}", key)
     paid = session.get("payment_status") == "paid"
     currency = str(session.get("currency") or "").upper()
-    with _lock:
-        order = _orders.get(session_id)
+    with store.db() as conn:
+        order = conn.execute("SELECT * FROM orders WHERE id = ?", (session_id,)).fetchone()
+        receipt = order["hash"] if order else None
         if paid and order and not order["paid"]:
-            order["paid"] = True
-            order["hash"] = shield.seal(
-                loop.SESSION, "receipt", {"session": session_id, "currency": currency, "total": order["total"]}
-            )["hash"]
+            receipt = store.append(
+                conn, "paid", {"session": session_id, "currency": currency, "total": order["total"]}, mandate.now()
+            )
+            conn.execute("UPDATE orders SET paid = 1, hash = ? WHERE id = ?", (receipt, session_id))
     amount = session.get("amount_total")
     return {
         "paid": paid,
         "status": session.get("status"),
         "currency": currency,
-        "amount": _major(amount, currency) if isinstance(amount, int) else None,
-        "items": order["items"] if order else [],
-        "hash": order["hash"] if order else None,
+        "amount": money.major(amount, currency) if isinstance(amount, int) else None,
+        "items": json.loads(order["items"]) if order else [],
+        "hash": receipt,
     }
+
+
+def cooling_until(at):
+    with store.db() as conn:
+        value = store.get(conn, "cooling_until")
+    if not value:
+        return None
+    until = datetime.fromisoformat(value)
+    return until if at < until else None
+
+
+def _start_cooling(at):
+    until = at + COOLING
+    with store.db() as conn:
+        store.put(conn, "cooling_until", until.isoformat(timespec="seconds"))
+        store.append(conn, "cooling_started", {"until": until.isoformat(timespec="seconds")}, at)
 
 
 def _check_items(items):
@@ -133,17 +134,17 @@ def _check_items(items):
     for item in items:
         if not isinstance(item, dict):
             raise CheckoutError("商品資料格式不對。")
-        card = {field: item.get(field) for field in SEALED_FIELDS}
-        if not isinstance(item.get("sig"), str) or not hmac.compare_digest(seal(card), item["sig"]):
+        card = {field: item.get(field) for field in cards.FIELDS}
+        if not cards.valid(card, item.get("sig")):
             raise CheckoutError("商品資料已過期或被改過，請回到對話重新搜尋後再加入購物車。", 409)
         name = str(card["name"] or "商品")
-        if not isinstance(card["price"], (int, float)) or card["price"] <= 0:
+        if isinstance(card["price"], bool) or not isinstance(card["price"], (int, float)) or card["price"] <= 0:
             raise CheckoutError(f"「{name[:24]}」沒有標價，請到商店頁購買。")
         currency = str(card["currency"] or "").upper()
-        if currency not in CURRENCIES:
+        if currency not in money.SIGNS:
             raise CheckoutError(f"「{name[:24]}」的幣別 {currency} 不能結帳。")
         qty = item.get("qty")
-        if not isinstance(qty, int) or not 1 <= qty <= MAX_QTY:
+        if isinstance(qty, bool) or not isinstance(qty, int) or not 1 <= qty <= MAX_QTY:
             raise CheckoutError(f"每件商品數量要在 1 到 {MAX_QTY} 之間。")
         image = card["image"] if isinstance(card["image"], str) and card["image"].startswith("https://") else None
         lines.append(
@@ -163,8 +164,8 @@ def _check_items(items):
     return lines
 
 
-def _verify(lines, model_config):
-    products = [
+def _products(lines):
+    return [
         {
             "id": f"c{index + 1}",
             "name": line["name"],
@@ -174,19 +175,6 @@ def _verify(lines, model_config):
         }
         for index, line in enumerate(lines)
     ]
-    settings = verifier.load_verify_env()
-    complete = None
-    if not (settings["base"] and settings["key"] and settings["model"]) and model_config.get("api_key"):
-        fallback = {
-            "base": model_config["base_url"].removesuffix("/v1"),
-            "key": model_config["api_key"],
-            "model": model_config["model"],
-        }
-
-        def complete(messages):
-            return verifier.call_model(fallback, messages)
-
-    return verifier.verify_products(products, complete)
 
 
 def _stripe(method, path, key, form=None):
@@ -211,24 +199,9 @@ def _stripe(method, path, key, form=None):
 
 
 def _stripe_key():
-    key = os.environ.get("STRIPE_SECRET_KEY", "").strip()
+    key = config.stripe_key()
     if not key:
         raise CheckoutError("web/.env 缺少 STRIPE_SECRET_KEY。請放 sk_test_ 開頭的測試金鑰。", 503)
     if not key.startswith(("sk_test_", "rk_test_")):
         raise CheckoutError("這個頁面只接受 Stripe 測試金鑰（sk_test_），不收真錢。", 403)
     return key
-
-
-def _card_key():
-    secret = os.environ.get("OPENAI_API_KEY") or os.environ.get("STRIPE_SECRET_KEY")
-    if not secret:
-        return _FALLBACK_KEY
-    return hashlib.sha256(f"hacku-card-seal|{secret}".encode("utf-8")).digest()
-
-
-def _minor(price, currency):
-    return int(round(price)) if currency in ZERO_DECIMAL else int(round(price * 100))
-
-
-def _major(amount, currency):
-    return amount if currency in ZERO_DECIMAL else amount / 100

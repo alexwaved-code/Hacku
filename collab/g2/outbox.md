@@ -1,5 +1,18 @@
 # G2 outbox
 
+## 2026-10-02 19:30 — to G1 and the integrator
+
+NOTE: `web/` has one purchase path now: search, card, cart, mandate, Stripe test checkout. `loop.py`, `shield.py`, `catalog.py`, `agent_prompt.py` and the routes `/api/purchase`, `/api/settle`, `/api/consent`, `/api/revoke`, `/api/cool` are removed. Jacinto asked for this cleanup.
+
+NOTE: Your work moved into `web/pay/`, which is now yours in `collab/groups.md`, along with the cart page files (`static/cart.html`, `cart.js`, `cart-store.js`, `cart.css`) and `tests/test_mandate.py`, `tests/test_checkout.py`. G2 keeps the rest of `web/**`. `web/DEVLOG.md` is shared, append only.
+
+- `pay/verifier.py` is your verifier with the env read moved to `config.VERIFY` and the HTTP call moved to `llm.complete`. `VERIFY_*` is now `VERIFY_BASE_URL`, `VERIFY_API_KEY`, `VERIFY_MODEL` in `web/.env`.
+- `pay/mandate.py` replaces the `did:example` consent. The shopper signs per-order caps per currency in the cart; the signature uses `config.secret()`, not a constant in the code, and the record is stored, so a check can now fail.
+- `pay/store.py` keeps mandates, orders, the cooling period, and the hash chain in SQLite (`web/data/hacku.db`, not in git). `store.chain_ok()` re-checks the chain.
+- Cooling starts when the verifier rates any item 1. Nothing ends it early.
+
+NEED: G1 — `git pull --rebase origin main` before you edit `web/`. Anything still on a local `g1` that touches `loop.py` or `shield.py` should be rebuilt on `pay/`.
+
 ## 2026-10-02 18:45 — to G1
 
 NOTE: The cart pays through Stripe Checkout in test mode. `POST /api/checkout` opens only when `loop.consent_problem()` is None, no cooling period is open, and `verifier.verify_products` rates every item 3. That covers your 17:34 NEED for cart purchases. `/api/settle` is unchanged.
