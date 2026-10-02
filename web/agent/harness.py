@@ -84,6 +84,7 @@ def run(config, history, emit):
     for round_no in range(MAX_ROUNDS):
         allow_tools = round_no < MAX_ROUNDS - 1
         tools = ASK_SCHEMAS if answer_now else TOOL_SCHEMAS
+        emit({"type": "phase", "phase": "answer" if answer_now else "plan" if round_no == 0 else "think"})
         text, calls = _round(config, messages, emit, "auto" if allow_tools else "none", tools)
         calls = [call for call in calls if call["name"]] if allow_tools else []
         if answer_now:
@@ -252,6 +253,7 @@ def _run_calls(calls, emit):
                     "name": call["name"],
                     "ok": result["ok"],
                     "summary": result["summary"],
+                    "detail": result.get("detail") or "",
                     "ui": result["ui"],
                 }
             )

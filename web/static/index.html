@@ -4,16 +4,20 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>購物助理</title>
+    <link rel="icon" href="logo.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
     <div class="app">
       <aside class="side side-chats">
         <div class="brand-row">
-          <h1>購物助理</h1>
-          <button type="button" id="new-chat" class="icon-btn new-chat" aria-label="新對話">
+          <a class="brand" href="./" aria-label="購物助理">
+            <img class="logo" src="logo.svg" alt="" width="28" height="28" />
+            <h1>購物助理</h1>
+          </a>
+          <button type="button" id="new-chat" class="icon-btn new-chat" aria-label="新對話" title="新對話">
             <svg viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M4 7h16M4 12h16M4 17h16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"></path>
+              <path d="M12 5v14M5 12h14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"></path>
             </svg>
           </button>
         </div>
@@ -26,29 +30,41 @@
       </aside>
       <main class="chat">
         <header class="chat-header">
-          <h1 class="narrow-title">購物助理</h1>
+          <a class="brand narrow-title" href="./" aria-label="購物助理">
+            <img class="logo" src="logo.svg" alt="" width="26" height="26" />
+            <h1>購物助理</h1>
+          </a>
           <div class="header-actions">
-            <button type="button" id="new-chat-narrow" class="icon-btn" aria-label="新對話">
+            <button type="button" id="new-chat-narrow" class="icon-btn" aria-label="新對話" title="新對話">
               <svg viewBox="0 0 24 24" aria-hidden="true">
-                <path d="M4 7h16M4 12h16M4 17h16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"></path>
+                <path d="M12 5v14M5 12h14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"></path>
               </svg>
             </button>
             <a id="cart-link" class="pill" href="cart.html">購物車<span id="cart-count"></span></a>
           </div>
         </header>
-        <ol id="messages" class="messages" aria-live="polite"></ol>
+        <div class="feed">
+          <ol id="messages" class="messages" aria-live="polite"></ol>
+          <button type="button" id="to-latest" class="to-latest" aria-label="捲到最新" hidden>
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M12 5v14M6 13l6 6 6-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+            </svg>
+          </button>
+        </div>
         <footer class="dock">
-          <div class="examples" id="examples">
-            <button type="button" class="pill" data-prompt="HK$500 以內，通勤用的降噪耳機">降噪耳機 HK$500 內</button>
-            <button type="button" class="pill" data-prompt="可以充手提電腦的行動電源">充手提電腦的行動電源</button>
-            <button type="button" class="pill" data-prompt="淘寶上的 iPhone 16 手機殼">淘寶手機殼</button>
-          </div>
           <form id="composer" class="composer">
             <label class="sr-only" for="message">訊息</label>
             <input id="message" name="message" type="text" autocomplete="off" placeholder="想買什麼，或想問什麼？" />
-            <button type="submit" id="send">送出</button>
-            <button type="button" id="stop" hidden>停止</button>
+            <button type="submit" id="send" class="send" aria-label="送出" title="送出（Enter）">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M12 19V5M6 11l6-6 6 6" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"></path>
+              </svg>
+            </button>
+            <button type="button" id="stop" class="stop" aria-label="停止" title="停止（Esc）" hidden>
+              <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="7" width="10" height="10" rx="2" fill="currentColor"></rect></svg>
+            </button>
           </form>
+          <p class="dock-hint">即時上網比價。付款前一定會先讓你確認。</p>
         </footer>
       </main>
       <aside class="side side-cart">

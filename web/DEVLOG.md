@@ -207,3 +207,18 @@ Cards show right after the search, five at a time, and the chat model is `kimi-k
 - Cards wait at most 0.5 s for store links. The links keep resolving in the background, and a new `cards` event sends the cards again with them before `done`.
 - Model race on the same gateway, full prompt and tools, the same shopping question: `kimi-k2.6` showed cards at 5 to 9 s and finished at 13 to 17 s in four runs. `deepseek-v4.1-flash` ranged from 13 s to a 63 s timeout; `deepseek-v4-flash-none` answered in Cantonese; `gpt-4o-mini` ignored the length rule; `glm-5.3-flash` misquoted a price; `claude-haiku-4-5` did not connect.
 - 44 unit tests.
+
+## 2026-10-03 00:53
+
+New chat page look, with a logo and something new on screen every second while the assistant works.
+
+- Logo `static/logo.svg`: a white shopping bag with an amber spark on a dark rounded square. It is the favicon and sits in the side panel and the phone header.
+- A new chat opens on a welcome screen with four example requests instead of a greeting bubble.
+- One progress panel per turn: a timer that counts tenths of a second, each step as it finishes, and a hint that changes every 1.5 seconds. The search step names up to three stores and the lowest price (`detail` on `tool_result`). The server sends a `phase` event at the start of each model round, so the panel can say 「理解你的需求」, 「整理剛拿到的資料」, or 「比較商品，寫推薦」. Five placeholder cards shimmer until the real cards arrive, and typing dots wait for the first word of the answer.
+- When the turn ends, the panel folds to one line such as 「完成 · 4 個步驟 · 53.0 秒」. A chat reply with no tools shows no panel.
+- Under the latest answer: 複製, 重新回答, and three follow-up chips when the answer has cards. Esc stops a running turn, `/` focuses the input, and a down-arrow button jumps back to the latest message.
+- Cards come in one after another. A card lifts on hover. A new cart item slides into the side cart, and the cart icon pulses. Saved chats open without replaying these animations.
+- The input is one rounded bar with an arrow send button and a square stop button. Under it: 「即時上網比價。付款前一定會先讓你確認。」
+- Static files are sent with `Cache-Control: no-cache`. Before, the browser could keep an old `app.js` after an update.
+- Opening a saved chat clears the previous chat's open question.
+- Checked in the browser at 1024 px and at 390 px: welcome, live panel at 10 s with five cards, folded panel with follow-ups, a question card on the phone, add to cart. 46 unit tests.

@@ -10,7 +10,7 @@ const els = {
   cartLink: $("#cart-link"),
   chatList: $("#chat-list"),
   sideCart: $("#side-cart"),
-  examples: document.querySelectorAll("#examples [data-prompt]"),
+  toLatest: $("#to-latest"),
 };
 
 const CHAT_KEY = "hacku.chat";
@@ -20,6 +20,26 @@ const IDLE_TIMEOUT_MS = 75000;
 const GREETING = "想買什麼？說出預算、用途，或想逛的商店，我幫你上網查。其他問題也可以問我。";
 const PLACEHOLDER = "想買什麼，或想問什麼？";
 const ASK_PLACEHOLDER = "點上面的選項，或直接打字回答";
+const EXAMPLES = [
+  ["降噪耳機", "HK$500 以內，通勤用的降噪耳機"],
+  ["行動電源", "可以充手提電腦的行動電源"],
+  ["淘寶手機殼", "淘寶上的 iPhone 16 手機殼"],
+  ["生日禮物", "送給爸爸的生日禮物，HK$800 以內"],
+];
+const FOLLOW_UPS = ["有沒有更便宜的？", "比較前兩個", "換個牌子看看"];
+const PHASES = {
+  plan: { label: "理解你的需求", hints: ["讀懂預算和用途", "決定要比哪些商店", "準備搜尋關鍵字"] },
+  think: { label: "整理剛拿到的資料", hints: ["看看結果夠不夠好", "決定下一步"] },
+  answer: { label: "比較商品，寫推薦", hints: ["比較價錢和評價", "檢查規格合不合用", "寫下重點"] },
+};
+const TOOL_HINTS = {
+  shop_search: ["連到 Google 購物", "讀取各家價錢", "濾掉超出預算的"],
+  web_search: ["搜尋網頁", "讀取搜尋結果"],
+  open_page: ["打開網頁", "讀取價錢和規格"],
+  show_products: ["比對商品名稱", "找商店連結"],
+  buy: ["核對商品和價錢", "檢查付款授權"],
+};
+const SKELETON_CARDS = 5;
 
 const state = {
   thread: [],
@@ -28,17 +48,38 @@ const state = {
   pendingAsk: null,
 };
 const cardPainters = new Set();
+let cartSeen = null;
 
 els.form.addEventListener("submit", (event) => {
   event.preventDefault();
   const text = els.input.value;
   if (!text.trim() || state.busy) return;
   els.input.value = "";
+  els.form.classList.remove("has-text");
   send(text);
 });
 els.stop.addEventListener("click", () => state.controller?.abort());
-els.examples.forEach((button) => button.addEventListener("click", () => send(button.dataset.prompt)));
+els.input.addEventListener("input", () => els.form.classList.toggle("has-text", !!els.input.value.trim()));
 els.newChat.forEach((button) => button.addEventListener("click", resetChat));
+els.list.addEventListener(
+  "scroll",
+  () => {
+    els.toLatest.hidden = els.list.scrollHeight - els.list.scrollTop - els.list.clientHeight < 240;
+  },
+  { passive: true }
+);
+els.toLatest.addEventListener("click", () => els.list.scrollTo({ top: els.list.scrollHeight, behavior: "smooth" }));
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && state.busy) {
+    state.controller?.abort();
+    return;
+  }
+  const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName || "");
+  if (event.key === "/" && !typing) {
+    event.preventDefault();
+    els.input.focus();
+  }
+});
 els.cartLink?.addEventListener("click", saveChat);
 window.addEventListener("pagehide", saveChat);
 updateCartCount();
@@ -70,6 +111,7 @@ function takePendingAsk(payload) {
 }
 
 async function runTurn(display, entries) {
+  els.list.querySelectorAll(".follow-ups, .act-retry").forEach((node) => node.remove());
   const userItem = appendUser(display);
   const turn = createTurn();
   const base = state.thread.length;
@@ -88,6 +130,13 @@ async function runTurn(display, entries) {
     const added = await streamChat(controller, turn);
     await turn.finish();
     state.thread.push(...added);
+    turn.addActions(() => {
+      if (state.busy) return;
+      state.thread.length = base;
+      userItem.remove();
+      turn.remove();
+      runTurn(display, entries);
+    });
     syncOrders();
     saveChat();
   } catch (error) {
@@ -163,7 +212,8 @@ async function streamChat(controller, turn) {
         else if (event.type === "retract") turn.retract();
         else if (event.type === "tool_start") turn.stepStart(event);
         else if (event.type === "tool_result") turn.stepDone(event);
-        else if (event.type === "cards") turn.showCards(event.items);
+        else if (event.type === "cards") turn.showCards(event.items, true);
+        else if (event.type === "phase") turn.phase(event.phase);
         else if (event.type === "ask") turn.ask(event);
         else if (event.type === "error") throw new Error(event.message || "助理發生錯誤。");
         else if (event.type === "done") added = Array.isArray(event.messages) ? event.messages : [];
@@ -201,6 +251,16 @@ function updateCartCount() {
 function renderSideCart() {
   if (!els.sideCart) return;
   const items = HackuCart.load();
+  const fresh = cartSeen ? items.filter((item) => !cartSeen.has(item.id)).map((item) => item.id) : [];
+  const grew = cartSeen && items.reduce((n, item) => n + (Number(item.qty) || 1), 0) > cartSeen.count;
+  cartSeen = new Set(items.map((item) => item.id));
+  cartSeen.count = items.reduce((n, item) => n + (Number(item.qty) || 1), 0);
+  if (grew) {
+    const mark = document.querySelector(".cart-mark");
+    mark?.classList.remove("pulse");
+    void mark?.offsetWidth;
+    mark?.classList.add("pulse");
+  }
   els.sideCart.replaceChildren();
   if (!items.length) {
     els.sideCart.append(h("p", { class: "side-empty" }, "還沒有商品。按商品卡右下角的購物車圖示加入，或直接跟助理說「幫我買」。"));
@@ -231,7 +291,7 @@ function renderSideCart() {
     list.append(
       h(
         "li",
-        { class: "side-cart-item" },
+        { class: fresh.includes(item.id) ? "side-cart-item fresh" : "side-cart-item" },
         picture,
         h(
           "div",
@@ -301,9 +361,26 @@ function setBusy(busy) {
   state.busy = busy;
   els.send.hidden = busy;
   els.stop.hidden = !busy;
-  els.examples.forEach((button) => {
-    button.disabled = busy;
-  });
+  els.form.classList.toggle("busy", busy);
+}
+
+function welcomeItem() {
+  const examples = EXAMPLES.map(([title, prompt], index) =>
+    h(
+      "button",
+      { type: "button", class: "example", style: `--i:${index}`, onclick: () => send(prompt) },
+      h("strong", {}, title),
+      h("span", {}, prompt)
+    )
+  );
+  return h(
+    "li",
+    { class: "welcome" },
+    h("img", { class: "welcome-logo", src: "logo.svg", alt: "" }),
+    h("h2", {}, "今天想買什麼？"),
+    h("p", {}, "說出預算和用途，我幫你上網比價，挑出最合適的。"),
+    h("div", { class: "examples" }, examples)
+  );
 }
 
 function resetChat() {
@@ -316,7 +393,7 @@ function resetChat() {
   els.input.value = "";
   sessionStorage.setItem(CURRENT_KEY, crypto.randomUUID());
   sessionStorage.removeItem(CHAT_KEY);
-  els.list.replaceChildren(h("li", { class: "message agent" }, GREETING));
+  els.list.replaceChildren(welcomeItem());
   renderChatList();
   els.input.focus();
 }
@@ -425,8 +502,11 @@ function openChat(id) {
 
 function restoreChat() {
   const saved = readChat();
+  state.pendingAsk = null;
+  state.openAsk = null;
+  els.input.placeholder = PLACEHOLDER;
   if (!saved) {
-    els.list.replaceChildren(h("li", { class: "message agent" }, GREETING));
+    els.list.replaceChildren(welcomeItem());
     return;
   }
   state.thread = Array.isArray(saved.thread) ? saved.thread : [];
@@ -434,9 +514,10 @@ function restoreChat() {
   for (const entry of saved.view || []) {
     if (entry.kind === "user") appendUser(entry.text);
     else if (entry.kind === "agent") appendSavedAgent(entry);
-    else els.list.append(h("li", { class: "message agent" }, entry.text || GREETING));
+    else if (entry.text && entry.text !== GREETING) els.list.append(h("li", { class: "message agent" }, entry.text));
   }
-  if (!els.list.children.length) els.list.append(h("li", { class: "message agent" }, GREETING));
+  for (const item of els.list.children) item.classList.add("restored");
+  if (!els.list.children.length) els.list.append(welcomeItem());
   if (saved.openAsk) {
     const card = askCard(saved.openAsk.questions || []);
     els.list.lastElementChild?.append(card.el);
@@ -489,7 +570,7 @@ function saveChat() {
 }
 
 function snapshotView() {
-  return [...els.list.children].map((item) => {
+  return [...els.list.children].filter((item) => !item.classList.contains("welcome")).map((item) => {
     if (item.classList.contains("user")) return { kind: "user", text: item.textContent };
     if (item.classList.contains("turn")) {
       return {
@@ -520,6 +601,7 @@ function appendSavedAgent(entry) {
 /* ---------- Messages ---------- */
 
 function appendUser(text) {
+  els.list.querySelector(".welcome")?.remove();
   const item = h("li", { class: "message user" }, text);
   els.list.append(item);
   scrollToEnd(true);
@@ -527,47 +609,69 @@ function appendUser(text) {
 }
 
 function createTurn() {
-  const status = h("p", { class: "status" }, h("span", { class: "spinner", "aria-hidden": "true" }), h("span", {}, "思考中…"));
+  const activity = createActivity();
   const cards = h("div", { class: "cards" });
   const receipts = h("div", { class: "receipts" });
   const text = h("div", { class: "text" });
-  const item = h("li", { class: "message agent turn" }, status, cards, receipts, text);
+  const typing = h("div", { class: "typing", hidden: true, "aria-label": "正在寫回覆" }, h("span"), h("span"), h("span"));
+  const item = h("li", { class: "message agent turn" }, activity.el, cards, receipts, text, typing);
   item._receipts = [];
   els.list.append(item);
   scrollToEnd(true);
 
   const typer = createTyper(text);
-  const running = new Map();
-
-  const showStatus = () => {
-    const labels = [...running.values()];
-    status.hidden = false;
-    status.lastChild.textContent = labels.length ? `${labels.join("、")}…` : "整理中…";
+  const clearSkeleton = () => cards.querySelectorAll(".skeleton").forEach((node) => node.remove());
+  const showSkeleton = () => {
+    if (cards.children.length) return;
+    for (let i = 0; i < SKELETON_CARDS; i += 1) {
+      cards.append(
+        h(
+          "div",
+          { class: "card-wrap skeleton", style: `--i:${i}`, "aria-hidden": "true" },
+          h("div", { class: "card" }, h("div", { class: "pic" }), h("div", { class: "info" }, h("p", { class: "bar" }), h("p", { class: "bar short" }), h("p", { class: "bar price-bar" })))
+        )
+      );
+    }
+    scrollToEnd();
   };
 
   return {
     timedOut: false,
+    phase(name) {
+      activity.phase(name);
+      if (name !== "plan") clearSkeleton();
+      if (name === "answer") {
+        typing.hidden = false;
+        scrollToEnd();
+      }
+    },
     write(piece) {
       if (!piece) return;
-      status.hidden = true;
+      activity.wrote();
+      typing.hidden = true;
       typer.push(piece);
     },
     retract() {
       typer.reset();
-      showStatus();
     },
     stepStart(event) {
-      running.set(event.id, event.label || event.name);
-      showStatus();
+      activity.toolStart(event);
+      if (event.name === "shop_search" || event.name === "show_products") showSkeleton();
     },
-    showCards(items) {
+    showCards(items, settled = false) {
       if (!Array.isArray(items)) return;
       item._products = items;
-      cards.replaceChildren(...items.map(productCard));
+      cards.replaceChildren(
+        ...items.map((product, index) => {
+          const card = productCard(product);
+          if (settled) card.classList.add("settled");
+          else card.style.setProperty("--i", index);
+          return card;
+        })
+      );
     },
     stepDone(event) {
-      running.delete(event.id);
-      showStatus();
+      activity.toolDone(event);
       if (event.ui?.kind === "products") {
         this.showCards(event.ui.items);
         scrollToEnd();
@@ -580,7 +684,9 @@ function createTurn() {
       }
     },
     ask(event) {
-      status.hidden = true;
+      activity.finish("需要你選一下");
+      typing.hidden = true;
+      clearSkeleton();
       const card = askCard(event.questions || []);
       item.append(card.el);
       state.openAsk = { id: event.id, questions: event.questions || [] };
@@ -591,18 +697,54 @@ function createTurn() {
     async finish() {
       await typer.finish();
       item._markdown = typer.text();
-      status.remove();
+      typing.remove();
+      clearSkeleton();
+      activity.finish("完成");
       item.querySelector(".ask button")?.focus({ preventScroll: true });
+    },
+    addActions(onRetry) {
+      const said = typer.text().trim();
+      const copy = h("button", { type: "button", class: "act-btn", title: "複製回覆" }, copyIcon(), "複製");
+      copy.addEventListener("click", async () => {
+        try {
+          await navigator.clipboard.writeText(said);
+          copy.lastChild.textContent = "已複製";
+          setTimeout(() => {
+            copy.lastChild.textContent = "複製";
+          }, 1400);
+        } catch {
+          copy.lastChild.textContent = "無法複製";
+        }
+      });
+      const retry = h("button", { type: "button", class: "act-btn act-retry", title: "重新回答" }, retryIcon(), "重新回答");
+      retry.addEventListener("click", onRetry);
+      if (said) item.append(h("div", { class: "turn-actions" }, copy, retry));
+      if (item._products?.length && !state.pendingAsk) {
+        item.append(
+          h(
+            "div",
+            { class: "follow-ups" },
+            FOLLOW_UPS.map((prompt, index) =>
+              h("button", { type: "button", class: "follow-up", style: `--i:${index}`, onclick: () => send(prompt) }, prompt)
+            )
+          )
+        );
+      }
+      scrollToEnd();
     },
     stop() {
       typer.flush();
-      status.remove();
+      typing.remove();
+      clearSkeleton();
+      activity.finish("已停止");
       item.append(h("p", { class: "note" }, "已停止"));
       return typer.text().trim();
     },
     fail(message, onRetry) {
       typer.cancel();
-      status.remove();
+      typing.remove();
+      clearSkeleton();
+      activity.finish("沒有完成");
       text.replaceChildren(
         h("p", { class: "error" }, message),
         h("button", { type: "button", class: "pill", onclick: onRetry }, "重試")
@@ -610,7 +752,108 @@ function createTurn() {
       scrollToEnd();
     },
     remove() {
+      activity.finish("");
       item.remove();
+    },
+  };
+}
+
+function createActivity() {
+  const started = performance.now();
+  const seconds = () => ((performance.now() - started) / 1000).toFixed(1);
+  const timer = h("span", { class: "act-timer" }, "0.0 秒");
+  const title = h("span", { class: "act-title" }, "開始處理");
+  const head = h(
+    "button",
+    { type: "button", class: "act-head", "aria-expanded": "true" },
+    h("span", { class: "orb", "aria-hidden": "true" }),
+    title,
+    timer,
+    h("span", { class: "act-chevron", "aria-hidden": "true" })
+  );
+  const steps = h("ol", { class: "act-steps" });
+  const el = h("div", { class: "activity live" }, head, steps);
+  const open = new Map();
+  let finished = false;
+  let count = 0;
+  let tools = 0;
+
+  const setHint = (step, value) => {
+    const node = h("span", { class: "act-hint" }, value);
+    step.hint.replaceWith(node);
+    step.hint = node;
+  };
+  const clock = setInterval(() => {
+    timer.textContent = `${seconds()} 秒`;
+  }, 100);
+  const rotate = setInterval(() => {
+    for (const step of open.values()) {
+      if (step.hints.length < 2) continue;
+      step.index = (step.index + 1) % step.hints.length;
+      setHint(step, step.hints[step.index]);
+    }
+  }, 1500);
+
+  const add = (key, label, hints = []) => {
+    const hint = h("span", { class: "act-hint" }, hints[0] || "");
+    const li = h("li", { class: "act-step run" }, h("span", { class: "act-dot", "aria-hidden": "true" }), h("span", { class: "act-label" }, label), hint);
+    steps.append(li);
+    open.set(key, { li, hint, hints, index: 0, label });
+    count += 1;
+    title.textContent = label;
+    scrollToEnd();
+  };
+  const done = (key, detail = "", ok = true) => {
+    const step = open.get(key);
+    if (!step) return;
+    open.delete(key);
+    step.li.className = `act-step ${ok ? "done" : "fail"}`;
+    setHint(step, detail);
+    const running = [...open.values()].pop();
+    if (running) title.textContent = running.label;
+  };
+  const settleThinking = () => {
+    for (const key of [...open.keys()]) if (key.startsWith("phase:")) done(key);
+  };
+
+  head.addEventListener("click", () => {
+    if (!finished) return;
+    const expanded = el.classList.toggle("open");
+    head.setAttribute("aria-expanded", String(expanded));
+  });
+
+  return {
+    el,
+    phase(name) {
+      if (finished) return;
+      settleThinking();
+      const phase = PHASES[name] || PHASES.think;
+      add(`phase:${count}`, phase.label, phase.hints);
+    },
+    toolStart(event) {
+      if (finished) return;
+      settleThinking();
+      tools += 1;
+      add(`tool:${event.id}`, event.label || event.name, TOOL_HINTS[event.name] || []);
+    },
+    toolDone(event) {
+      done(`tool:${event.id}`, [event.summary, event.detail].filter(Boolean).join(" · "), event.ok !== false);
+    },
+    wrote: settleThinking,
+    finish(label) {
+      if (finished) return;
+      finished = true;
+      clearInterval(clock);
+      clearInterval(rotate);
+      for (const key of [...open.keys()]) done(key);
+      if (!tools && label === "完成") {
+        el.remove();
+        return;
+      }
+      el.classList.remove("live");
+      head.setAttribute("aria-expanded", "false");
+      title.textContent = label;
+      timer.textContent = `${count} 個步驟 · ${seconds()} 秒`;
     },
   };
 }
@@ -743,6 +986,14 @@ function pencilIcon() {
 
 function pinIcon() {
   return lineIcon("M8 3h8v6l2 2v2H6v-2l2-2V3zM12 13v8");
+}
+
+function copyIcon() {
+  return lineIcon("M9 9h10v10H9zM5 15V5h10");
+}
+
+function retryIcon() {
+  return lineIcon("M4 12a8 8 0 1 0 2.4-5.7M4 4v4h4");
 }
 
 function trashIcon() {

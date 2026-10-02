@@ -223,7 +223,7 @@ def tool_label(name, args):
     if name == "open_page":
         return f"讀取 {web._site(str(args.get('url') or '')) or '網頁'}"
     if name == "show_products":
-        return "整理結果"
+        return "挑出最合適的商品"
     if name == ASK_TOOL:
         return "想先問你幾個問題"
     if name == BUY_TOOL:
@@ -323,9 +323,25 @@ def shop_search(query, max_price=None, region=None, store=""):
     return {
         "ok": True,
         "summary": f"{len(rows)} 個報價" if rows else "沒有符合的報價",
+        "detail": _offers_detail(rows),
         "model": model,
         "ui": None,
     }
+
+
+def _offers_detail(rows):
+    """One short line for the progress panel: a few store names and the lowest price."""
+    stores = []
+    for row in rows:
+        store = str(row.get("store") or "").strip()
+        if store and store not in stores:
+            stores.append(store)
+    priced = [row for row in rows if row.get("price") is not None]
+    low = min(priced, key=lambda row: row["price"]) if priced else None
+    parts = ["、".join(stores[:3]) + (" 等" if len(stores) > 3 else "")] if stores else []
+    if low:
+        parts.append(f"最低 {money.text(low['price'], low['currency'])}")
+    return " · ".join(parts)
 
 
 def show_products(refs):

@@ -116,6 +116,18 @@ class HarnessTest(TempData):
         self.assertEqual([e["type"] for e in events][-2:], ["cards", "done"])
         self.assertEqual(events[-2]["items"], [{"name": "A1 updated"}])
 
+    def test_each_round_announces_its_phase(self):
+        events, opened = self.run_turn(FakeStream([two_searches()]), FakeStream([say("首選 A1。")]))
+        self.assertEqual([e["phase"] for e in events if e["type"] == "phase"], ["plan", "answer"])
+
+    def test_search_detail_names_a_few_stores_and_the_lowest_price(self):
+        rows = [
+            {"store": store, "price": price, "currency": "HKD"}
+            for store, price in [("豐澤", 399), ("The Club", 125), ("豐澤", 150), ("領域", None), ("偉倫", 299)]
+        ]
+        self.assertEqual(tools._offers_detail(rows), "豐澤、The Club、領域 等 · 最低 HK$125")
+        self.assertEqual(tools._offers_detail([]), "")
+
     def test_empty_answer_after_cards_still_says_something(self):
         events, opened = self.run_turn(FakeStream([two_searches()]), FakeStream([]))
         self.assertEqual(events[-1]["messages"][-1]["content"], harness.CARDS_TEXT)

@@ -46,6 +46,11 @@ class Handler(SimpleHTTPRequestHandler):
         except OSError:
             pass
 
+    def end_headers(self):
+        if not self.path.startswith("/api/"):
+            self.send_header("Cache-Control", "no-cache")
+        super().end_headers()
+
     def log_message(self, format, *args):
         message = format % args
         if "Authorization" in message or "sk-" in message:

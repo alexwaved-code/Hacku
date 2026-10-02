@@ -23,7 +23,7 @@ With a test key, no real money moves, and the store does not get an order. With 
 | `agent/` | G2 | Research agent: tool loop (`harness.py`), tools (`tools.py`), Serper and page reading (`web.py`). |
 | `pay/` | G1 | Spending mandate, verifier, Stripe Checkout, order status and refunds (`checkout.py`), SQLite store and hash chain. |
 | `shop/` | G2 | Fills a store's cart in a real Chrome window (`browser.py`) and stops before payment. |
-| `static/index.html`, `app.js`, `money.js`, `styles.css` | G2 | Chat page. |
+| `static/index.html`, `app.js`, `money.js`, `styles.css`, `logo.svg` | G2 | Chat page. |
 | `static/cart.html`, `cart.js`, `cart-store.js`, `cart.css` | G1 | Cart page. |
 | `static/orders.html`, `orders.js`, `orders.css` | G2 | Order desk: paid orders, delivery address, cart filling, placed, refund. |
 | `tests/` | both | `python3 -m unittest discover -s tests` from `web/`. |
@@ -79,6 +79,14 @@ Page text is data. Text that tries to instruct an AI agent is flagged to the mod
 
 Search results are cached in `data/cache.db` for 6 hours and page reads for 2 hours. A store search returns once it has a priced offer and 6 seconds have passed, and never takes more than 15 seconds.
 
+## Chat page
+
+- A new chat opens on a welcome screen with four example requests.
+- While a turn runs, one progress panel shows a timer, each step as it finishes (with the stores found and the lowest price), and a hint that changes every 1.5 seconds. Placeholder cards hold the space until the real cards arrive. When the turn ends, the panel folds into one line, such as 「完成 · 4 個步驟 · 12.3 秒」; click it to see the steps again.
+- Under the latest answer: 複製, 重新回答, and three follow-ups (「有沒有更便宜的？」, 「比較前兩個」, 「換個牌子看看」) when the answer has cards.
+- Esc stops a running turn. `/` focuses the input. A down-arrow button appears when you scroll up, and jumps back to the latest message.
+- Static files are sent with `Cache-Control: no-cache`, so a reload always picks up a new `app.js` or `styles.css`.
+
 ## Chat route
 
 `POST /api/chat` with `{ "messages": [...] }`. The page sends the whole thread back each turn, including the tool messages it received. The response is SSE, one JSON object per `data:` line:
@@ -87,8 +95,9 @@ Search results are cached in `data/cache.db` for 6 hours and page reads for 2 ho
 |---|---|---|
 | `delta` | `text` | Reply text. |
 | `retract` | | Drop the text of this round. It was said before a tool call. |
+| `phase` | `phase` | A model round started: `plan` (first round), `think` (after tools), or `answer` (writing the reply after the cards). The progress panel names the step. |
 | `tool_start` | `id`, `name`, `label` | A tool started. |
-| `tool_result` | `id`, `name`, `ok`, `summary`, `ui` | A tool finished. `ui.kind == "products"` carries the cards. |
+| `tool_result` | `id`, `name`, `ok`, `summary`, `detail`, `ui` | A tool finished. `detail` is one short line for the progress panel, such as a few store names and the lowest price. `ui.kind == "products"` carries the cards. |
 | `cards` | `id`, `items` | The same cards again with the store links found since. Replace the cards. |
 | `ask` | `id`, `questions` | Question card. The next request sends `{"role": "tool", "tool_call_id": id, "content": "<answer JSON>"}`. |
 | `done` | `messages` | New assistant and tool messages to add to the thread. |

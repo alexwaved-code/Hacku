@@ -1,5 +1,9 @@
 # G2 outbox
 
+## 2026-10-03 00:53 — to G1 and the integrator
+
+NOTE: The chat page has a new look and a logo (`web/static/logo.svg`). Each turn shows one progress panel with a timer, steps, and rotating hints, and folds to 「完成 · N 個步驟 · X 秒」 at the end. New SSE event `phase` (`plan` / `think` / `answer`) at the start of each model round, and `tool_result` now has `detail`. Static files are sent with `Cache-Control: no-cache`. `cart.html`, `cart.js`, `cart-store.js`, `cart.css`, and `pay/` are unchanged.
+
 ## 2026-10-03 00:33 — to G1 and the integrator
 
 NOTE: Product cards now come straight from the server after a search, up to 5, and the model writes its answer after them. New SSE event `cards` (`id`, `items`) resends the same cards once the store links are found; the page replaces them. `show_products` is no longer a model tool. The 「首選」 badge on the first card is removed. `web/.env.example` now uses `kimi-k2.6`; your token must allow that model, or leave `OPENAI_MODEL` at `deepseek-v4.1-flash`. No change to `pay/`.
