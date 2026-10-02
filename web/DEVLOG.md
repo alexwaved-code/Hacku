@@ -116,3 +116,22 @@ One purchase path: search, card, cart, mandate, Stripe test checkout.
 - 23 unit tests in `tests/`.
 
 Browser check: HKTVmall MOMAX Mag.Link 60W USB-C cable, HK$69. A mandate with an HKD cap of 50 blocked the pay button ("小計超過每筆上限 HK$50。"). A cap of 100 let it through; the verifier rated it 3; Stripe test card 4242 paid HK$69; the receipt hash was `119b5fba04af`. A cart item sealed under the old key was refused with "商品資料已過期或被改過". After revoking and restarting the server, `/api/mandate` still reported "你已撤銷授權。" and the hash chain checked out.
+
+## 2026-10-02 20:05
+
+The assistant can pay inside the shopper's mandate.
+
+- The cart has 「儲存 Stripe 測試卡（Visa 4242）」. It attaches Stripe's test Visa to a test customer (`pay/wallet.py`). 「移除付款卡」 detaches it.
+- New `buy` tool. When the shopper asks to buy a shown card, the agent sends its ref. The server rebuilds and seals the item from its cache and calls `checkout.charge`, which runs the cart's gates (seal, price, one currency, mandate cap, cooling, verifier rating 3) and then confirms an off-session PaymentIntent with an idempotency key.
+- The chat shows a green receipt card (amount, card, record hash) or a red card with the reason. The cart's 「付款紀錄」 lists every payment as 「助理付款」 or 「購物車結帳」 and shows whether the hash chain checks out.
+- The verifier rates each item in its own call, all at once. Search results are cached for 6 hours and page reads for 2 hours. A store search stops at 6 seconds once it has a priced offer, and at 15 seconds at the latest.
+- 32 unit tests.
+
+Browser check, run twice:
+
+- Mandate HKD 100 and CNY 100, test card saved.
+- 「幫我買第一個」 on a 1-Link Flow CC X 60W cable paid HK$56, record `308c3bc05a90`. On a Taobao phone case it paid 人民幣 ¥24.90, record `7e201d12928a`.
+- Three cables at once (HK$138.16) and a ¥756 case were refused as over the cap. After revoking, a purchase was refused with 「你已撤銷授權。」.
+- A vague 「再幫我買一個」 led to no purchase.
+- The cart listed both payments as 「助理付款」, and the hash chain checked out. Cart checkout still opens a Stripe Checkout Session.
+

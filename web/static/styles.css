@@ -591,3 +591,67 @@ a.card:hover {
     transition: none !important;
   }
 }
+
+.receipts:empty {
+  display: none;
+}
+
+.receipts {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.receipt {
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1px solid var(--line);
+  animation: rise 0.25s ease both;
+}
+
+.receipt.paid {
+  background: #ecfdf3;
+  border-color: #bbe5c8;
+  color: #14532d;
+}
+
+.receipt.refused {
+  background: #fef2f2;
+  border-color: #f3c7c7;
+  color: #7f1d1d;
+}
+
+.receipt-title {
+  margin: 0 0 6px;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.receipt-items {
+  margin: 0 0 6px;
+  padding-left: 18px;
+  font-size: 14px;
+}
+
+.receipt-store {
+  margin-left: 8px;
+  opacity: 0.7;
+}
+
+.receipt-line {
+  margin: 0;
+  font-size: 13px;
+}
+
+.receipt-line.mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.receipt-link {
+  display: inline-block;
+  margin-top: 6px;
+  color: inherit;
+  font-size: 13px;
+  font-weight: 600;
+}

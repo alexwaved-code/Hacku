@@ -1,8 +1,9 @@
 import re
 import threading
+import time
 import urllib.parse
 from collections import OrderedDict
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from itertools import count
 
 import cards
@@ -13,6 +14,8 @@ from . import web
 MAX_CARDS = 3
 CARD_TOOL = "show_products"
 ASK_TOOL = "ask_user"
+BUY_TOOL = "buy"
+MAX_BUY = 5
 MAX_QUESTIONS = 3
 MAX_OPTIONS = 6
 CACHE_SIZE = 600
@@ -31,6 +34,9 @@ PRODUCT_PATH = re.compile(r"/(?:products?|p|item|goods|dp)/", re.IGNORECASE)
 NOT_PRODUCT_PATH = re.compile(r"/(?:collections?|categor(?:y|ies)|promotions?|search|brands?|tag|list|topic)s?(?:/|$)|promotion", re.IGNORECASE)
 REGION_NAMES = {"hk": "香港", "tw": "台灣", "cn": "中國", "jp": "日本", "kr": "韓國", "sg": "新加坡", "us": "美國", "uk": "英國", "au": "澳洲"}
 STORE_PAGES = 5
+STORE_DEADLINE = 15
+STORE_ENOUGH = 6
+PLACEHOLDER_PRICE = 99999
 LISTING_TITLE = re.compile(r"促[销銷]价格|促銷價格|[价價]格[与與]图片|[价價]格[與与]圖片|精[选選]|推[荐薦]|\bTop\s*\d", re.IGNORECASE)
 SITE_PREFIX = re.compile(r"^(?:amazon\.[\w.]+|[\w.]+\.com)\s*[:：]\s*", re.IGNORECASE)
 STORES = (
@@ -176,11 +182,49 @@ TOOL_SCHEMAS = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": BUY_TOOL,
+            "description": (
+                "Pay now for products shown on cards, with the shopper's saved card, inside their signed spending mandate. "
+                "Call it only when the shopper clearly asks to buy specific products from the cards. All items must come from one store. "
+                "The payment service refuses when the mandate does not cover the total, a cooling period is open, "
+                "or the verifier does not accept every item; the result then says why."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "items": {
+                        "type": "array",
+                        "minItems": 1,
+                        "maxItems": MAX_BUY,
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "ref": {"type": "string", "description": "ref of a product the shopper saw on a card."},
+                                "qty": {"type": "integer", "minimum": 1, "maximum": 10},
+                            },
+                            "required": ["ref"],
+                        },
+                    }
+                },
+                "required": ["items"],
+            },
+        },
+    },
 ]
 
 _cache = OrderedDict()
 _lock = threading.Lock()
 _counter = count(1)
+_buyer = None
+
+
+def set_buyer(pay):
+    """pay(items) charges sealed card items and returns a receipt or {'paid': False, 'reason': ...}."""
+    global _buyer
+    _buyer = pay
 
 
 def tool_label(name, args):
@@ -200,6 +244,8 @@ def tool_label(name, args):
         return "整理結果"
     if name == ASK_TOOL:
         return "想先問你幾個問題"
+    if name == BUY_TOOL:
+        return "檢查授權並付款"
     return name
 
 
@@ -241,6 +287,8 @@ def run_tool(name, args):
             return web_search(str(args.get("query") or ""), args.get("region"))
         if name == "open_page":
             return open_page(str(args.get("url") or ""))
+        if name == BUY_TOOL:
+            return buy(args.get("items"))
     except web.FetchError as error:
         return _fail(str(error), _short_error(str(error)))
     except Exception as error:
@@ -312,7 +360,7 @@ def show_products(refs):
         return _fail("Those refs are unknown or expired. Run shop_search again.", "找不到商品")
     with ThreadPoolExecutor(max_workers=MAX_CARDS) as pool:
         list(pool.map(_resolve_link, items))
-    model = {"shown": [{"name": i["name"], "store": i["store"], "price": i["price"], "url": i["url"]} for i in items]}
+    model = {"shown": [{"ref": _ref_of(i), "name": i["name"], "store": i["store"], "price": i["price"], "currency": i.get("currency")} for i in items]}
     if missing:
         model["missing"] = missing
     return {
@@ -358,6 +406,50 @@ def open_page(url):
         model["page_flag"] = INJECTION_NOTE
     summary = _price_text(page["price"], page["currency"]) if page["is_product"] else "已讀取"
     return {"ok": True, "summary": summary, "model": model, "ui": None}
+
+
+def buy(entries):
+    if _buyer is None:
+        return _fail("Payments are not connected on this server.", "付款未連線")
+    if not isinstance(entries, list) or not entries:
+        return _fail("items must list at least one ref.", "沒有商品")
+    chosen = []
+    with _lock:
+        for entry in entries[:MAX_BUY]:
+            entry = entry if isinstance(entry, dict) else {"ref": entry}
+            item = _cache.get(str(entry.get("ref")))
+            if item is None:
+                return _fail("That ref is unknown or expired. Search again and show the products first.", "找不到商品")
+            qty = entry.get("qty", 1)
+            qty = int(qty) if isinstance(qty, (int, float, str)) and str(qty).strip().isdigit() else 1
+            chosen.append((dict(item), qty))
+    payload = []
+    for item, qty in chosen:
+        card = _card(item)
+        payload.append({**{field: card[field] for field in cards.FIELDS}, "id": card["url"] or card["name"], "qty": qty, "sig": card["sig"]})
+    result = _buyer(payload)
+    if not result.get("paid"):
+        return {
+            "ok": True,
+            "summary": "沒有付款",
+            "model": {"paid": False, "reason": result.get("reason")},
+            "ui": {"kind": "receipt", "paid": False, "reason": result.get("reason")},
+        }
+    receipt = {key: result[key] for key in ("amount", "currency", "card", "hash", "items")}
+    return {
+        "ok": True,
+        "summary": f"已付款 {money.text(result['amount'], result['currency'])}",
+        "model": {
+            "paid": True,
+            "amount": result["amount"],
+            "currency": result["currency"],
+            "card": result["card"],
+            "record": (result["hash"] or "")[:12],
+            "items": [entry["name"] for entry in result["items"]],
+            "note": "Stripe test mode: no real money moved and the store did not receive an order.",
+        },
+        "ui": {"kind": "receipt", "paid": True, **receipt},
+    }
 
 
 def has_refs(model):
@@ -448,9 +540,18 @@ def _store_offers(query, store, region):
             pages.append(picture)
         if len(pages) >= STORE_PAGES:
             break
-    with ThreadPoolExecutor(max_workers=STORE_PAGES) as pool:
-        read = list(pool.map(lambda picture: _store_item(picture, display, price_region), pages))
-    items = [item for item in read if item]
+    pool = ThreadPoolExecutor(max_workers=STORE_PAGES)
+    futures = [pool.submit(_store_item, picture, display, price_region) for picture in pages]
+    started = time.monotonic()
+    pending = set(futures)
+    while pending:
+        elapsed = time.monotonic() - started
+        priced = listed or any(f.result() and f.result()["price"] is not None for f in futures if f.done())
+        if elapsed >= STORE_DEADLINE or (priced and elapsed >= STORE_ENOUGH):
+            break
+        _, pending = wait(pending, timeout=min(1.0, STORE_DEADLINE - elapsed), return_when=FIRST_COMPLETED)
+    pool.shutdown(wait=False)
+    items = [future.result() for future in futures if future.done() and future.result()]
     items.sort(key=lambda item: item["price"] is None)
     return listed[:5] + items, domain
 
@@ -477,7 +578,7 @@ def _store_item(picture, store, region):
     if urllib.parse.urlsplit(page["url"]).path in ("", "/"):
         return None
     price, currency = (page["price"], page["currency"]) if page["is_product"] else web.page_price(page["text"], region)
-    if price is None:
+    if price is None or price >= PLACEHOLDER_PRICE:
         return item
     item.update(
         {
@@ -520,6 +621,11 @@ def _ascii_words(text):
 def _is_google(url):
     host = urllib.parse.urlsplit(str(url or "")).hostname or ""
     return host == "google.com" or host.endswith(".google.com")
+
+
+def _ref_of(item):
+    with _lock:
+        return next((ref for ref, cached in _cache.items() if cached is item), None)
 
 
 def _remember(item):
