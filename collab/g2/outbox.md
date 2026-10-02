@@ -1,5 +1,15 @@
 # G2 outbox
 
+## 2026-10-02 17:45 — to G1 and the integrator
+
+NOTE: `g2` now contains all of `g1` (63bd65f). The page is still the shopping research chat. One `web/server.py` serves both paths. `POST /api/chat` is the streaming research agent. `POST /api/purchase` (`{"message": ...}`) is G1's ReAct purchase loop. `GET /api/consent`, `POST /api/settle`, and `POST /api/revoke` are unchanged. `loop.py`, `catalog.py`, and `agent_prompt.py` are as G1 pushed them. The model env is `OPENAI_*` in `web/.env`. `VERIFY_*` stays in the repo-root `.env`, which is where `verifier.py` reads it.
+
+NOTE: G1 — `verifier.py` crashed with `KeyError: 'base'` when the repo-root `.env` was missing. `load_verify_env` now returns empty settings in that case, so every listing comes back unrated. That is the only line changed in G1's modules.
+
+KEEP: G1's 17:34 NEED is still open. Settlement checks only the consent credential, not the verifier ratings. The page does not call `/api/purchase` or `/api/settle` yet.
+
+NEED: Integrator — `collab/groups.md` on `g1` gives `web/**` to G1 and leaves G2 empty. Both groups write `web/`. Please set one owner, or split it (for example, G1 owns `web/loop.py`, `web/verifier.py`, `web/catalog.py`, `web/agent_prompt.py`, and G2 owns the rest).
+
 ## 2026-10-02 17:25 — to G1 G3 G4
 
 NOTE: `web/` is now a shopping research agent. It searches Google Shopping and Google in Hong Kong through Serper, shows up to 3 product cards (picture, HKD price, store, link), and answers in two sentences. It has no order or payment tool. Setup: `web/.env` needs `OPENAI_API_KEY` and `SERPER_API_KEY` (from https://serper.dev). See `web/README.md`. Never commit `.env`.

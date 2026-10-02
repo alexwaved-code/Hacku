@@ -86,3 +86,16 @@ The response is SSE (`text/event-stream`), one JSON object per `data:` line:
 | `ask` | `id`, `questions` | Question card. The next request sends `{"role": "tool", "tool_call_id": id, "content": "<answer JSON>"}` instead of a user message. |
 | `done` | `messages` | New assistant and tool messages to add to the thread. |
 | `error` | `message` | Shown with a retry button. |
+
+## Purchase routes (G1)
+
+`web/loop.py` decides one spending request against a `did:example` consent credential. The page does not call these routes yet.
+
+| Route | Body | Result |
+|---|---|---|
+| `POST /api/purchase` | `{"message": "Buy groceries for 80 USD."}` | `decision`, `rule`, the reason/act/negotiate/execute steps, `draftId` when it can settle, and a one-sentence `note` |
+| `GET /api/consent` | | Whether the credential is still valid, and when it expires |
+| `POST /api/settle` | `{"draftId": "..."}` | Settles only if the signature, expiry, revocation, and cap still pass |
+| `POST /api/revoke` | | Revokes consent. Settlement stays closed after that. |
+
+`web/verifier.py` rates each listing 1 to 3 with a second model (`VERIFY_API_BASE`, `VERIFY_API_KEY`, `VERIFY_MODEL` in the repo-root `.env`). Until it is set, every listing is unrated and nothing settles.

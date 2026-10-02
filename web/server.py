@@ -7,8 +7,12 @@ import os
 import socket
 import sys
 import traceback
+import urllib.error
+import urllib.request
 
+import loop
 from agent import harness
+from agent_prompt import explain_messages
 
 ROOT = Path(__file__).resolve().parent
 HOST = "127.0.0.1"
@@ -16,6 +20,7 @@ PORT = 8765
 MAX_BODY = 600_000
 MAX_MESSAGES = 80
 HIDDEN_PREFIXES = ("/agent", "/server.py")
+PURCHASE_ROUTES = ("/api/purchase", "/api/settle", "/api/revoke")
 
 
 def load_env(path):
@@ -59,6 +64,9 @@ class Handler(SimpleHTTPRequestHandler):
         super().log_message("%s", message)
 
     def do_GET(self):
+        if urlparse(self.path).path == "/api/consent":
+            self.send_json(200, loop.consent_view())
+            return
         if self.is_hidden():
             self.send_error(404)
             return
@@ -77,7 +85,11 @@ class Handler(SimpleHTTPRequestHandler):
         return path.startswith(HIDDEN_PREFIXES) or path.endswith(".py")
 
     def do_POST(self):
-        if urlparse(self.path).path != "/api/chat":
+        path = urlparse(self.path).path
+        if path in PURCHASE_ROUTES:
+            self.purchase_route(path)
+            return
+        if path != "/api/chat":
             self.send_error(404)
             return
         if not CONFIG["api_key"]:
@@ -121,6 +133,24 @@ class Handler(SimpleHTTPRequestHandler):
             traceback.print_exc(file=sys.stderr)
             self.safe_emit(emit, {"type": "error", "message": "助理發生內部錯誤。"})
 
+    def purchase_route(self, path):
+        length = int(self.headers.get("Content-Length", "0") or "0")
+        if length < 0 or length > MAX_BODY:
+            self.send_json(400, {"error": "Request is too large."})
+            return
+        try:
+            payload = json.loads(self.rfile.read(length).decode("utf-8") or "{}")
+            if path == "/api/purchase":
+                result = purchase(payload)
+            elif path == "/api/settle":
+                result = loop.settle(str(payload.get("draftId") or ""))
+            else:
+                result = loop.revoke(loop.SESSION)
+        except Exception as error:
+            self.send_json(400, {"error": str(error)})
+            return
+        self.send_json(200, result)
+
     def safe_emit(self, emit, event):
         try:
             emit(event)
@@ -135,6 +165,41 @@ class Handler(SimpleHTTPRequestHandler):
         self.send_header("Cache-Control", "no-store")
         self.end_headers()
         self.wfile.write(raw)
+
+
+def purchase(payload):
+    text = payload.get("message")
+    if not isinstance(text, str) or not text.strip():
+        raise ValueError("message is required")
+    turn = loop.run_turn(text.strip())
+    turn["note"] = explain(turn)
+    return turn
+
+
+def explain(turn):
+    if not CONFIG["api_key"]:
+        return turn["note"]
+    body = json.dumps(
+        {
+            "model": CONFIG["model"],
+            "temperature": 0,
+            "thinking": {"type": "disabled"},
+            "messages": explain_messages(turn),
+        }
+    ).encode("utf-8")
+    request = urllib.request.Request(
+        f"{CONFIG['base_url']}/chat/completions",
+        data=body,
+        headers={"Authorization": f"Bearer {CONFIG['api_key']}", "Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=20) as response:
+            data = json.loads(response.read().decode("utf-8"))
+        sentence = data["choices"][0]["message"]["content"].strip()
+    except (urllib.error.URLError, KeyError, IndexError, TypeError, json.JSONDecodeError, TimeoutError, OSError):
+        return turn["note"]
+    return sentence or turn["note"]
 
 
 def normalize_messages(raw):
