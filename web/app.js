@@ -1,235 +1,385 @@
-const messages = document.querySelector("#messages");
-const composer = document.querySelector("#composer");
-const input = document.querySelector("#message");
-const sendButton = composer.querySelector("button");
+const $ = (selector, root = document) => root.querySelector(selector);
 
-const thread = [
-  {
-    role: "system",
-    content:
-      "You are a shopping assistant. Answer the user's questions about products and purchases. Keep replies concise. You cannot pay, open wallets, or complete a checkout.",
-  },
-];
+const els = {
+  list: $("#messages"),
+  form: $("#composer"),
+  input: $("#message"),
+  send: $("#send"),
+  stop: $("#stop"),
+  newChat: $("#new-chat"),
+  examples: document.querySelectorAll("#examples [data-prompt]"),
+};
 
-appendMessage("agent", "Ask me about a purchase.");
+const IDLE_TIMEOUT_MS = 75000;
+const GREETING = "想買什麼？說出預算和用途，我幫你上網查香港的真實價錢。";
 
-composer.addEventListener("submit", async (event) => {
+const state = {
+  thread: [],
+  busy: false,
+  controller: null,
+};
+
+els.form.addEventListener("submit", (event) => {
   event.preventDefault();
-  const text = input.value.trim();
-  if (!text) return;
+  const text = els.input.value;
+  if (!text.trim() || state.busy) return;
+  els.input.value = "";
+  send(text);
+});
+els.stop.addEventListener("click", () => state.controller?.abort());
+els.newChat.addEventListener("click", resetChat);
+els.examples.forEach((button) => button.addEventListener("click", () => send(button.dataset.prompt)));
 
-  input.value = "";
-  thread.push({ role: "user", content: text });
-  appendMessage("user", text);
-  const pending = appendMessage("agent", "Thinking…", true);
-  const typer = createTyper(pending);
+resetChat();
+
+/* ---------- Sending ---------- */
+
+async function send(text) {
+  text = String(text || "").trim();
+  if (!text || state.busy) return;
+
+  const userItem = appendUser(text);
+  const turn = createTurn();
+  state.thread.push({ role: "user", content: text });
   setBusy(true);
 
-  try {
-    const reply = await askAgent(thread, (chunk) => typer.push(chunk));
-    const shown = await typer.finish();
-    pending.textContent = shown || reply;
-    pending.classList.remove("pending", "typing");
-    thread.push({ role: "assistant", content: reply });
-  } catch (error) {
-    typer.cancel();
-    const detail = error instanceof Error ? error.message : "Request failed.";
-    pending.textContent = detail;
-    pending.classList.remove("pending", "typing");
-  } finally {
-    setBusy(false);
-    input.focus();
-  }
-});
+  const controller = new AbortController();
+  state.controller = controller;
 
-function appendMessage(role, text, pending = false) {
-  const item = document.createElement("li");
-  item.className = pending ? `message ${role} pending` : `message ${role}`;
-  item.textContent = text;
-  messages.appendChild(item);
-  messages.scrollTop = messages.scrollHeight;
-  return item;
+  try {
+    const added = await streamChat(controller, turn);
+    await turn.finish();
+    state.thread.push(...added);
+  } catch (error) {
+    state.thread.pop();
+    if (turn.timedOut) {
+      turn.fail("等太久沒有回應，請再試一次。", () => retry(userItem, turn, text));
+    } else if (controller.signal.aborted) {
+      const partial = turn.stop();
+      if (partial) state.thread.push({ role: "user", content: text }, { role: "assistant", content: partial });
+    } else {
+      turn.fail(error instanceof Error ? error.message : "發生錯誤。", () => retry(userItem, turn, text));
+    }
+  } finally {
+    state.controller = null;
+    setBusy(false);
+    els.input.focus();
+  }
+}
+
+function retry(userItem, turn, text) {
+  userItem.remove();
+  turn.remove();
+  send(text);
+}
+
+async function streamChat(controller, turn) {
+  let idle = null;
+  const bump = () => {
+    clearTimeout(idle);
+    idle = setTimeout(() => {
+      turn.timedOut = true;
+      controller.abort();
+    }, IDLE_TIMEOUT_MS);
+  };
+  bump();
+
+  try {
+    let response;
+    try {
+      response = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
+        body: JSON.stringify({ messages: state.thread }),
+        signal: controller.signal,
+      });
+    } catch (error) {
+      if (controller.signal.aborted) throw error;
+      throw new Error("連不上伺服器。請先執行 python3 web/server.py");
+    }
+
+    if (!(response.headers.get("content-type") || "").includes("text/event-stream")) {
+      const raw = await response.text();
+      let payload = {};
+      try {
+        payload = JSON.parse(raw);
+      } catch {
+        payload = {};
+      }
+      throw new Error(payload.error || `請求失敗（${response.status}）`);
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    let added = null;
+
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      bump();
+      buffer += decoder.decode(value, { stream: true });
+      const blocks = buffer.split("\n\n");
+      buffer = blocks.pop() ?? "";
+      for (const block of blocks) {
+        const event = parseEvent(block);
+        if (!event) continue;
+        if (event.type === "delta") turn.write(event.text);
+        else if (event.type === "retract") turn.retract();
+        else if (event.type === "tool_start") turn.stepStart(event);
+        else if (event.type === "tool_result") turn.stepDone(event);
+        else if (event.type === "error") throw new Error(event.message || "助理發生錯誤。");
+        else if (event.type === "done") added = Array.isArray(event.messages) ? event.messages : [];
+      }
+    }
+
+    if (!added) throw new Error("連線中斷，請再試一次。");
+    return added;
+  } finally {
+    clearTimeout(idle);
+  }
+}
+
+function parseEvent(block) {
+  const line = block.split("\n").find((item) => item.startsWith("data:"));
+  if (!line) return null;
+  try {
+    return JSON.parse(line.slice(5).trim());
+  } catch {
+    return null;
+  }
 }
 
 function setBusy(busy) {
-  input.disabled = busy;
-  sendButton.disabled = busy;
+  state.busy = busy;
+  els.send.hidden = busy;
+  els.stop.hidden = !busy;
+  els.examples.forEach((button) => {
+    button.disabled = busy;
+  });
 }
 
-function createTyper(el) {
-  let queue = "";
-  let shown = "";
-  let timer = null;
-  let cancelled = false;
+function resetChat() {
+  state.controller?.abort();
+  state.thread = [];
+  els.list.replaceChildren(h("li", { class: "message agent" }, GREETING));
+  els.input.value = "";
+  els.input.focus();
+}
 
-  function paint() {
-    el.textContent = shown;
-    messages.scrollTop = messages.scrollHeight;
-  }
+/* ---------- Messages ---------- */
 
-  function tick() {
-    timer = null;
-    if (cancelled || !queue) return;
-    const ch = queue[0];
-    queue = queue.slice(1);
-    shown += ch;
-    paint();
-    timer = window.setTimeout(tick, ch === "\n" ? 36 : 18);
-  }
+function appendUser(text) {
+  const item = h("li", { class: "message user" }, text);
+  els.list.append(item);
+  scrollToEnd(true);
+  return item;
+}
+
+function createTurn() {
+  const status = h("p", { class: "status" }, h("span", { class: "spinner", "aria-hidden": "true" }), h("span", {}, "思考中…"));
+  const cards = h("div", { class: "cards" });
+  const text = h("div", { class: "text" });
+  const item = h("li", { class: "message agent turn" }, status, cards, text);
+  els.list.append(item);
+  scrollToEnd(true);
+
+  const typer = createTyper(text);
+  const running = new Map();
+
+  const showStatus = () => {
+    const labels = [...running.values()];
+    status.hidden = false;
+    status.lastChild.textContent = labels.length ? `${labels.join("、")}…` : "整理中…";
+  };
 
   return {
-    push(text) {
-      if (cancelled || !text) return;
-      if (el.classList.contains("pending")) {
-        el.textContent = "";
-        el.classList.remove("pending");
+    timedOut: false,
+    write(piece) {
+      if (!piece) return;
+      status.hidden = true;
+      typer.push(piece);
+    },
+    retract() {
+      typer.reset();
+      showStatus();
+    },
+    stepStart(event) {
+      running.set(event.id, event.label || event.name);
+      showStatus();
+    },
+    stepDone(event) {
+      running.delete(event.id);
+      showStatus();
+      if (event.ui?.kind === "products") {
+        cards.replaceChildren(...event.ui.items.map((product, index) => productCard(product, index === 0)));
+        scrollToEnd();
       }
-      el.classList.add("typing");
-      queue += text;
-      if (timer == null) tick();
     },
     async finish() {
-      while (!cancelled && (queue || timer != null)) {
-        await new Promise((resolve) => window.setTimeout(resolve, 20));
-      }
-      el.classList.remove("typing");
-      return shown;
+      await typer.finish();
+      status.remove();
     },
-    cancel() {
-      cancelled = true;
-      queue = "";
-      if (timer != null) {
-        window.clearTimeout(timer);
-        timer = null;
-      }
-      el.classList.remove("typing");
+    stop() {
+      typer.flush();
+      status.remove();
+      item.append(h("p", { class: "note" }, "已停止"));
+      return typer.text().trim();
+    },
+    fail(message, onRetry) {
+      typer.cancel();
+      status.remove();
+      text.replaceChildren(
+        h("p", { class: "error" }, message),
+        h("button", { type: "button", class: "pill", onclick: onRetry }, "重試")
+      );
+      scrollToEnd();
+    },
+    remove() {
+      item.remove();
     },
   };
 }
 
-async function askAgent(history, onDelta) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 45000);
+function productCard(product, best) {
+  const picture = product.image
+    ? h("img", { src: product.image, alt: "", loading: "lazy", referrerpolicy: "no-referrer", onerror: hideBrokenImage })
+    : null;
+  const rating =
+    product.rating != null
+      ? h("span", { class: "rating" }, `★ ${Number(product.rating).toFixed(1)}`, product.reviews ? `（${compact(product.reviews)}）` : "")
+      : null;
+  const content = [
+    h("div", { class: "pic" }, picture, best ? h("span", { class: "badge" }, "首選") : null),
+    h(
+      "div",
+      { class: "info" },
+      h("p", { class: "name", title: product.name }, product.name),
+      h("p", { class: "price" }, money(product.price, product.currency)),
+      h("p", { class: "store" }, product.store, rating),
+      product.flagged ? h("p", { class: "flag" }, "此頁含寫給 AI 的指令，已忽略") : null
+    ),
+    product.url ? h("span", { class: "go" }, "查看商店 ↗") : null,
+  ];
+  return product.url
+    ? h("a", { class: "card", href: product.url, target: "_blank", rel: "noopener noreferrer" }, content)
+    : h("div", { class: "card" }, content);
+}
 
-  let response;
-  try {
-    response = await fetch("/api/chat", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Accept: "text/event-stream",
-      },
-      body: JSON.stringify({
-        messages: history.map(({ role, content }) => ({ role, content })),
-      }),
-      signal: controller.signal,
-    });
-  } catch (error) {
-    clearTimeout(timer);
-    if (error instanceof DOMException && error.name === "AbortError") {
-      throw new Error("The model took too long. Try again.");
-    }
-    throw new Error("Cannot reach the local chat server. Run python3 web/server.py");
-  }
+function hideBrokenImage(event) {
+  event.currentTarget.remove();
+}
 
-  const type = response.headers.get("content-type") || "";
-  if (!type.includes("text/event-stream")) {
-    clearTimeout(timer);
-    const raw = await response.text();
-    if (raw.includes("data:")) {
-      return readSseText(raw, onDelta);
-    }
-    let payload = {};
-    try {
-      payload = JSON.parse(raw);
-    } catch {
-      payload = {};
-    }
-    if (typeof payload.reply === "string" && payload.reply.trim()) {
-      const reply = payload.reply.trim();
-      onDelta(reply);
-      return reply;
-    }
-    throw new Error(
-      readJsonError(payload) || raw.trim().slice(0, 180) || `The model request failed (${response.status}).`
-    );
-  }
+/* ---------- Typing ---------- */
 
-  if (!response.body) {
-    clearTimeout(timer);
-    throw new Error("The model stream is empty.");
-  }
+function createTyper(target) {
+  let queue = "";
+  let shown = "";
+  let timer = null;
+  let stopped = false;
 
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = "";
-  let reply = "";
+  const paint = () => {
+    target.innerHTML = renderMarkdown(shown);
+    scrollToEnd();
+  };
 
-  try {
-    while (true) {
-      const { value, done } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-      const parts = buffer.split("\n\n");
-      buffer = parts.pop() ?? "";
-      for (const part of parts) {
-        const result = readSseData(part);
-        if (!result) continue;
-        if (result.error) throw new Error(result.error);
-        if (result.delta) {
-          reply += result.delta;
-          onDelta(result.delta);
-        }
+  const tick = () => {
+    timer = null;
+    if (stopped || !queue) return;
+    const size = queue.length > 120 ? 4 : queue.length > 40 ? 2 : 1;
+    shown += queue.slice(0, size);
+    queue = queue.slice(size);
+    paint();
+    timer = setTimeout(tick, 18);
+  };
+
+  return {
+    push(piece) {
+      if (stopped) return;
+      queue += piece;
+      if (timer === null) tick();
+    },
+    async finish() {
+      while (!stopped && (queue || timer !== null)) {
+        await new Promise((resolve) => setTimeout(resolve, 24));
       }
-    }
-  } finally {
-    clearTimeout(timer);
-    reader.releaseLock();
-  }
-
-  if (!reply.trim()) {
-    throw new Error("The model returned an empty reply.");
-  }
-  return reply.trim();
+    },
+    flush() {
+      clearTimeout(timer);
+      timer = null;
+      shown += queue;
+      queue = "";
+      stopped = true;
+      if (shown) paint();
+    },
+    cancel() {
+      clearTimeout(timer);
+      timer = null;
+      queue = "";
+      stopped = true;
+    },
+    reset() {
+      clearTimeout(timer);
+      timer = null;
+      queue = "";
+      shown = "";
+      target.replaceChildren();
+    },
+    text: () => shown,
+  };
 }
 
-function readSseText(raw, onDelta) {
-  let reply = "";
-  for (const part of raw.split("\n\n")) {
-    const result = readSseData(part);
-    if (!result) continue;
-    if (result.error) throw new Error(result.error);
-    if (result.delta) {
-      reply += result.delta;
-      onDelta(result.delta);
-    }
+/* ---------- Helpers ---------- */
+
+function h(tag, props = {}, ...children) {
+  const el = document.createElement(tag);
+  for (const [key, value] of Object.entries(props || {})) {
+    if (value === null || value === undefined || value === false) continue;
+    if (key === "class") el.className = value;
+    else if (key.startsWith("on") && typeof value === "function") el.addEventListener(key.slice(2), value);
+    else el.setAttribute(key, value === true ? "" : String(value));
   }
-  if (!reply.trim()) {
-    throw new Error("The model returned an empty reply.");
+  for (const child of children.flat(Infinity)) {
+    if (child === null || child === undefined || child === false || child === "") continue;
+    el.append(child instanceof Node ? child : String(child));
   }
-  return reply.trim();
+  return el;
 }
 
-function readJsonError(payload) {
-  if (!payload || typeof payload !== "object") return "";
-  if (typeof payload.error === "string") return payload.error;
-  const err = payload.error;
-  if (err && typeof err === "object") {
-    if (typeof err.message === "string") return err.message;
-    if (typeof err.msg === "string") return err.msg;
-  }
-  if (typeof payload.message === "string") return payload.message;
-  return "";
+function renderMarkdown(source) {
+  return String(source)
+    .replace(/\r/g, "")
+    .split(/\n{2,}/)
+    .map((block) => block.trim())
+    .filter(Boolean)
+    .map((block) => `<p>${block.split("\n").map((line) => inline(line.replace(/^\s*(?:[-*•]|\d+[.)]|#{1,6})\s+/, ""))).join("<br>")}</p>`)
+    .join("");
 }
 
-function readSseData(block) {
-  const line = block.split("\n").find((item) => item.startsWith("data:"));
-  if (!line) return null;
-  const raw = line.slice(5).trim();
-  if (!raw || raw === "[DONE]") return { done: true };
-  try {
-    return JSON.parse(raw);
-  } catch {
-    return null;
-  }
+function inline(text) {
+  return escapeHtml(text)
+    .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+    .replace(/\[([^\]]+)\]\((https:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
+}
+
+function escapeHtml(text) {
+  return String(text).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+}
+
+function money(value, currency = "HKD") {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return "";
+  const digits = Number.isInteger(number) ? 0 : 2;
+  const amount = number.toLocaleString("en-HK", { minimumFractionDigits: digits, maximumFractionDigits: digits });
+  return currency === "HKD" ? `HK$${amount}` : `${currency} ${amount}`;
+}
+
+function compact(value) {
+  const number = Number(value);
+  return number >= 1000 ? `${(number / 1000).toFixed(number >= 10000 ? 0 : 1)}k` : String(number);
+}
+
+function scrollToEnd(force = false) {
+  const el = els.list;
+  if (force || el.scrollHeight - el.scrollTop - el.clientHeight < 160) el.scrollTop = el.scrollHeight;
 }

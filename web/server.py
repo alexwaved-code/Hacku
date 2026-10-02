@@ -1,16 +1,21 @@
 #!/usr/bin/env python3
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from urllib.parse import urlparse
 import json
 import os
 import socket
-import urllib.error
-import urllib.request
+import sys
+import traceback
+
+from agent import harness
 
 ROOT = Path(__file__).resolve().parent
 HOST = "127.0.0.1"
 PORT = 8765
-MAX_BODY = 200_000
+MAX_BODY = 600_000
+MAX_MESSAGES = 80
+HIDDEN_PREFIXES = ("/agent", "/server.py")
 
 
 def load_env(path):
@@ -26,9 +31,12 @@ def load_env(path):
 
 load_env(ROOT / ".env")
 
-BASE_URL = os.environ.get("OPENAI_BASE_URL", "https://xh.v1api.cc/v1").rstrip("/")
-API_KEY = os.environ.get("OPENAI_API_KEY", "")
-MODEL = os.environ.get("OPENAI_MODEL", "deepseek-v4.1-flash")
+CONFIG = {
+    "base_url": os.environ.get("OPENAI_BASE_URL", "https://xh.v1api.cc/v1").rstrip("/"),
+    "api_key": os.environ.get("OPENAI_API_KEY", ""),
+    "model": os.environ.get("OPENAI_MODEL", "deepseek-v4.1-flash"),
+    "timeout": 25,
+}
 
 
 class Handler(SimpleHTTPRequestHandler):
@@ -50,12 +58,30 @@ class Handler(SimpleHTTPRequestHandler):
             return
         super().log_message("%s", message)
 
-    def do_POST(self):
-        if self.path != "/api/chat":
+    def do_GET(self):
+        if self.is_hidden():
             self.send_error(404)
             return
-        if not API_KEY:
-            self.send_json(503, {"error": "Missing OPENAI_API_KEY in web/.env"})
+        super().do_GET()
+
+    def do_HEAD(self):
+        if self.is_hidden():
+            self.send_error(404)
+            return
+        super().do_HEAD()
+
+    def is_hidden(self):
+        path = urlparse(self.path).path
+        if any(part.startswith(".") for part in path.split("/") if part):
+            return True
+        return path.startswith(HIDDEN_PREFIXES) or path.endswith(".py")
+
+    def do_POST(self):
+        if urlparse(self.path).path != "/api/chat":
+            self.send_error(404)
+            return
+        if not CONFIG["api_key"]:
+            self.send_json(503, {"error": "web/.env 缺少 OPENAI_API_KEY。"})
             return
 
         length = int(self.headers.get("Content-Length", "0"))
@@ -66,37 +92,8 @@ class Handler(SimpleHTTPRequestHandler):
         try:
             payload = json.loads(self.rfile.read(length).decode("utf-8"))
             messages = normalize_messages(payload.get("messages"))
-        except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as error:
+        except (UnicodeDecodeError, json.JSONDecodeError, ValueError, AttributeError) as error:
             self.send_json(400, {"error": str(error)})
-            return
-
-        body = json.dumps(
-            {
-                "model": MODEL,
-                "messages": messages,
-                "stream": True,
-                "max_tokens": 1024,
-                "thinking": {"type": "disabled"},
-            }
-        ).encode("utf-8")
-        request = urllib.request.Request(
-            f"{BASE_URL}/chat/completions",
-            data=body,
-            method="POST",
-            headers={
-                "Authorization": f"Bearer {API_KEY}",
-                "Content-Type": "application/json",
-            },
-        )
-
-        try:
-            upstream = urllib.request.urlopen(request, timeout=60)
-        except urllib.error.HTTPError as error:
-            detail = read_upstream_error(error)
-            self.send_json(error.code if 400 <= error.code < 600 else 502, {"error": detail})
-            return
-        except Exception:
-            self.send_json(502, {"error": "The model did not respond."})
             return
 
         self.send_response(200)
@@ -105,35 +102,30 @@ class Handler(SimpleHTTPRequestHandler):
         self.send_header("X-Accel-Buffering", "no")
         self.send_header("Connection", "close")
         self.end_headers()
-        self.wfile.flush()
+        self.close_connection = True
+
+        def emit(event):
+            try:
+                self.wfile.write(f"data: {json.dumps(event, ensure_ascii=False)}\n\n".encode("utf-8"))
+                self.wfile.flush()
+            except (BrokenPipeError, ConnectionResetError, OSError) as error:
+                raise harness.Aborted() from error
 
         try:
-            while True:
-                raw = upstream.readline()
-                if not raw:
-                    break
-                line = raw.decode("utf-8", errors="replace").strip()
-                if not line.startswith("data:"):
-                    continue
-                data = line[5:].strip()
-                if data == "[DONE]":
-                    break
-                delta = extract_delta(data)
-                if not delta:
-                    continue
-                self.wfile.write(f"data: {json.dumps({'delta': delta}, ensure_ascii=False)}\n\n".encode("utf-8"))
-                self.wfile.flush()
-            self.wfile.write(b'data: {"done":true}\n\n')
-            self.wfile.flush()
+            harness.run(CONFIG, messages, emit)
+        except harness.Aborted:
+            return
+        except harness.UpstreamError as error:
+            self.safe_emit(emit, {"type": "error", "message": str(error)})
         except Exception:
-            try:
-                self.wfile.write(b'data: {"error":"The model stream stopped."}\n\n')
-                self.wfile.flush()
-            except Exception:
-                pass
-        finally:
-            upstream.close()
-            self.close_connection = True
+            traceback.print_exc(file=sys.stderr)
+            self.safe_emit(emit, {"type": "error", "message": "助理發生內部錯誤。"})
+
+    def safe_emit(self, emit, event):
+        try:
+            emit(event)
+        except harness.Aborted:
+            pass
 
     def send_json(self, status, payload):
         raw = json.dumps(payload).encode("utf-8")
@@ -148,61 +140,82 @@ class Handler(SimpleHTTPRequestHandler):
 def normalize_messages(raw):
     if not isinstance(raw, list) or not raw:
         raise ValueError("messages must be a non-empty list.")
-    if len(raw) > 40:
-        raise ValueError("Too many messages.")
+    raw = raw[-MAX_MESSAGES:]
+
     messages = []
     for item in raw:
         if not isinstance(item, dict):
             raise ValueError("Each message must be an object.")
         role = item.get("role")
-        content = item.get("content")
-        if role not in {"system", "user", "assistant"}:
+        if role == "user":
+            content = item.get("content")
+            if not isinstance(content, str) or not content.strip():
+                raise ValueError("Each user message needs text.")
+            if len(content) > 8000:
+                raise ValueError("A message is too long.")
+            messages.append({"role": "user", "content": content.strip()})
+        elif role == "assistant":
+            messages.append(normalize_assistant(item))
+        elif role == "tool":
+            call_id = item.get("tool_call_id")
+            content = item.get("content")
+            if not isinstance(call_id, str) or not isinstance(content, str) or len(content) > 40000:
+                raise ValueError("Invalid tool message.")
+            messages.append({"role": "tool", "tool_call_id": call_id, "content": content})
+        else:
             raise ValueError("Invalid message role.")
-        if not isinstance(content, str) or not content.strip():
-            raise ValueError("Each message needs text.")
-        if len(content) > 8000:
-            raise ValueError("A message is too long.")
-        messages.append({"role": role, "content": content.strip()})
+
+    while messages and messages[0]["role"] != "user":
+        messages.pop(0)
+    if not messages:
+        raise ValueError("The conversation needs a user message.")
     return messages
 
 
-def extract_delta(raw):
-    try:
-        payload = json.loads(raw)
-        delta = payload["choices"][0]["delta"]
-    except (json.JSONDecodeError, KeyError, IndexError, TypeError):
-        return ""
-    content = delta.get("content")
-    return content if isinstance(content, str) else ""
+def normalize_assistant(item):
+    content = item.get("content")
+    if content is not None and not isinstance(content, str):
+        raise ValueError("Invalid assistant message.")
+    if isinstance(content, str) and len(content) > 20000:
+        raise ValueError("An assistant message is too long.")
+    message = {"role": "assistant", "content": content or None}
 
-
-def read_upstream_error(error):
-    try:
-        body = json.loads(error.read().decode("utf-8"))
-    except Exception:
-        return "The model request failed."
-    if isinstance(body, dict):
-        err = body.get("error")
-        if isinstance(err, dict):
-            for key in ("message", "msg", "detail"):
-                if isinstance(err.get(key), str) and err[key].strip():
-                    return err[key]
-        if isinstance(err, str) and err.strip():
-            return err
-        if isinstance(body.get("message"), str):
-            return body["message"]
-        if isinstance(body.get("msg"), str):
-            return body["msg"]
-    return "The model request failed."
+    calls = item.get("tool_calls")
+    if calls:
+        if not isinstance(calls, list) or len(calls) > 8:
+            raise ValueError("Invalid tool calls.")
+        clean = []
+        for call in calls:
+            function = call.get("function") if isinstance(call, dict) else None
+            if (
+                not isinstance(function, dict)
+                or not isinstance(call.get("id"), str)
+                or not isinstance(function.get("name"), str)
+                or not isinstance(function.get("arguments", ""), str)
+            ):
+                raise ValueError("Invalid tool call.")
+            clean.append(
+                {
+                    "id": call["id"],
+                    "type": "function",
+                    "function": {"name": function["name"], "arguments": function.get("arguments") or "{}"},
+                }
+            )
+        message["tool_calls"] = clean
+    elif not content:
+        message["content"] = ""
+    return message
 
 
 def main():
     server = ThreadingHTTPServer((HOST, PORT), Handler)
     print(f"http://{HOST}:{PORT}/", flush=True)
-    if API_KEY:
-        print(f"model {MODEL}", flush=True)
+    if CONFIG["api_key"]:
+        print(f"model {CONFIG['model']}", flush=True)
     else:
         print("Missing OPENAI_API_KEY. Copy web/.env.example to web/.env", flush=True)
+    if not os.environ.get("SERPER_API_KEY"):
+        print("Missing SERPER_API_KEY. Live product search is off.", flush=True)
     server.serve_forever()
 
 

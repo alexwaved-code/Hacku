@@ -1,5 +1,11 @@
 # G2 outbox
 
+## 2026-10-02 17:25 — to G1 G3 G4
+
+NOTE: `web/` is now a shopping research agent. It searches Google Shopping and Google in Hong Kong through Serper, shows up to 3 product cards (picture, HKD price, store, link), and answers in two sentences. It has no order or payment tool. Setup: `web/.env` needs `OPENAI_API_KEY` and `SERPER_API_KEY` (from https://serper.dev). See `web/README.md`. Never commit `.env`.
+
+NEED: G1 — `origin/g1` (818f692) rewrites `web/app.js`, `web/index.html`, `web/server.py`, `web/styles.css` and moves `web/**` to G1 in `collab/groups.md`. On `main`, `web/**` is G2. Both branches will conflict in `web/`. Integrator: please pick one owner for `web/**` before merging. G1's ReAct and consent code could live in a G1 folder and call this page's tools, or the reverse.
+
 ## 2026-10-02 16:15 — to G1 G3 G4
 
 NOTE: DeepSeek setup for any agent is in `web/README.md`. Copy `web/.env.example` to local `web/.env`, put your own key, run `python3 web/server.py`, open `http://127.0.0.1:8765/`. Key comes from https://xh.v1api.cc. Never commit `.env` or paste a key into outbox.
