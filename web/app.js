@@ -110,6 +110,13 @@ function appendTurn(turn) {
     const text = document.createElement("p");
     text.textContent = step.text;
     block.append(title, text);
+    (step.products || []).forEach((product) => {
+      const row = document.createElement("p");
+      row.className = "product";
+      const rating = product.rating == null ? "not rated" : `rating ${product.rating}`;
+      row.textContent = `${product.name}: ${rating}. ${product.reason}`;
+      block.append(row);
+    });
     (step.rails || []).forEach((rail) => {
       const row = document.createElement("p");
       row.className = rail.recommended ? "rail recommended" : "rail";

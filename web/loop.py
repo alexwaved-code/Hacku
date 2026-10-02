@@ -11,6 +11,9 @@ import re
 import uuid
 from datetime import datetime, timedelta, timezone
 
+from catalog import filter_products
+from verifier import accepted_total, verify_products
+
 TZ = timezone(timedelta(hours=8))
 EXPIRES = datetime(2026, 10, 7, 23, 59, 59, tzinfo=TZ)
 PROOF_SECRET = b"hacku-demo-consent-v1"
@@ -194,8 +197,9 @@ def rank_rails(category, total):
     return ranked
 
 
-def run_turn(text, now=None, session=None):
+def run_turn(text, now=None, session=None, verify=None):
     session = session or SESSION
+    verify = verify or verify_products
     now = now_hk(now)
     parsed = parse_purchase(text)
     if parsed["intent"] == "revoke":
@@ -273,6 +277,28 @@ def run_turn(text, now=None, session=None):
             return stop_turn("refuse", rule["id"], reason, act, "No card is chosen.", "Settlement did not run.", act)
         act = f"ENT_TX allows it. {money(total)} USD is within the {money(rule['cap'])} USD per-transaction cap."
 
+    room = round(rule["cap"] - grocery_spent(session, now), 2) if parsed["category"] == "groceries" else rule["cap"]
+    shortlist = filter_products(parsed["category"], parsed["amount"], round(room - sum(known_fees), 2))
+    verified = verify(shortlist)
+    kept = [item for item in verified if item["rating"] == 3]
+    verify_text = verification_text(verified)
+    if not kept:
+        return {
+            "decision": "reconsider",
+            "rule": "VERIFY",
+            "canSettle": False,
+            "draftId": None,
+            "note": verify_text,
+            "steps": [
+                {"phase": "reason", "title": "Reason", "text": reason, "status": "pass"},
+                {"phase": "act", "title": "Act", "text": act, "status": "pass"},
+                {"phase": "verify", "title": "Verify", "text": verify_text, "products": verified, "status": "stop"},
+                {"phase": "negotiate", "title": "Negotiate", "text": "No rail is compared because no listing rated 3.", "rails": [], "status": "stop"},
+                {"phase": "execute", "title": "Execute", "text": "Nothing is charged.", "status": "stop"},
+            ],
+        }
+
+    total = round(accepted_total(verified) + sum(known_fees), 2)
     rails = rank_rails(parsed["category"], total)
     winner = next(rail for rail in rails if rail["recommended"])
     other = next(rail for rail in rails if not rail["recommended"])
@@ -292,7 +318,8 @@ def run_turn(text, now=None, session=None):
         "rule": rule["id"],
         "reward": winner["reward"],
     }
-    note = f"{spread} Authorize to settle. Nothing is charged until you do."
+    kept_names = ", ".join(item["name"] for item in kept)
+    note = f"Kept {kept_names} after verification. {spread} Authorize to settle. Nothing is charged until you do."
     return {
         "decision": "allow",
         "rule": rule["id"],
@@ -302,6 +329,7 @@ def run_turn(text, now=None, session=None):
         "steps": [
             {"phase": "reason", "title": "Reason", "text": reason, "status": "pass"},
             {"phase": "act", "title": "Act", "text": act, "status": "pass"},
+            {"phase": "verify", "title": "Verify", "text": verify_text, "products": verified, "status": "pass"},
             {"phase": "negotiate", "title": "Negotiate", "text": spread, "rails": rails, "status": "pass"},
             {
                 "phase": "execute",
@@ -369,6 +397,22 @@ def settle(draft_id, now=None, session=None):
         "rule": draft["rule"],
         "text": f"Settled {money(draft['total'])} USD on {rail_name}. Consent credential checked.{reward}",
     }
+
+
+def verification_text(verified):
+    if not verified:
+        return "No listing fits this amount, so there is nothing to verify."
+    parts = []
+    for item in verified:
+        if item["rating"] == 3:
+            parts.append(f"{item['name']} rated 3 and stays.")
+        elif item["rating"] == 1:
+            parts.append(f"{item['name']} rated 1 and is rejected.")
+        elif item["rating"] == 2:
+            parts.append(f"{item['name']} rated 2 and goes back for reconsideration.")
+        else:
+            parts.append(f"{item['name']} was not rated, so it goes back for reconsideration.")
+    return " ".join(parts)
 
 
 def money(value):

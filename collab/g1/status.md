@@ -2,9 +2,9 @@
 
 - group: G1
 - human: Jacinto
-- updated: 2026-10-02 16:45
+- updated: 2026-10-02 17:28
 - doing: none
-- done: ReAct loop in `web/`; settlement checks the consent credential
+- done: ReAct loop; consent check; product verifier with `rate_listing` (1 reject, 3 accept)
 - blocked: none
 - next: none
-- ask_other: none
+- ask_other: G2 connect `rate_listing` to the consent check before settlement

@@ -53,3 +53,9 @@ This session is G1. The purchase path is a ReAct loop in `web/loop.py`, not a si
 Reason reads the category and amount. Act checks the mandate. Negotiate compares Mastercard and UnionPay. Execute stays closed until the customer authorizes, and `/api/settle` checks a `did:example` consent credential (signature, expiry, revocation, cap) before anything is recorded.
 
 Mastercard's 5% grocery and 2% general cashback are the scenario fixture supplied on 2026-10-02. UnionPay has no cashback on that fixture, so its reward stays unknown. The model may phrase the result. It does not choose the rail or the decision.
+
+## 2026-10-02 17:28
+
+The shopping agent now filters a demo shelf and sends that list to a second agent in `web/verifier.py`. The verifier does not talk to the shopper. Its only tool is `rate_listing`: 3 is acceptable, 2 goes back for reconsideration, and 1 is a reject. The shopping agent drops anything that is not a 3 and will not settle an empty list.
+
+The second model is read from `VERIFY_API_BASE`, `VERIFY_API_KEY`, and `VERIFY_MODEL`. Those are empty until the API arrives. Until then every listing is unrated, which the shopping agent treats as reconsider. The shelf prices are scenario fixtures, not observed store prices.
