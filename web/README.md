@@ -1,6 +1,6 @@
 # Shopping assistant
 
-A chat page that researches real products sold in Hong Kong. The browser talks only to `web/server.py`. That process runs a tool loop with DeepSeek V4.1 Flash and live Google Shopping and Google search through Serper. Keys stay in local `web/.env`.
+A chat page that researches real products, in Hong Kong by default or in one store or country the user names. It also answers ordinary questions. The browser talks only to `web/server.py`. That process runs a tool loop with DeepSeek V4.1 Flash and live Google Shopping and Google search through Serper. Keys stay in local `web/.env`.
 
 The assistant only researches. It cannot order, pay, or contact a store. The user buys from the store link on each card.
 
@@ -43,9 +43,9 @@ Model requests use `Authorization: Bearer <key>`, `stream: true`, `max_tokens: 4
 | Tool | What it does |
 |---|---|
 | `ask_user` | 1 to 3 multiple-choice questions (budget, use, one key preference, or a trade-off between the shown picks). The turn pauses. The page shows a question card, and the user's choices come back as this tool's result: `{"answers": [...], "note": "…"}`, `{"skipped": true}`, or `{"user_reply": "…"}` when they type instead. |
-| `shop_search` | Google Shopping, Hong Kong (`gl=hk`). Real offers: name, store, HKD price, rating, picture. Each offer gets a `ref`. |
+| `shop_search` | Google Shopping in `region` (default `hk`; also `tw`, `cn`, `jp`, `kr`, `sg`, `us`, `uk`, `au`). With `store` (for example `taobao`, `amazon.co.jp`, `hktvmall`, or any domain), it searches Google Images for `site:<domain>` product pages, opens up to 5 of them, and reads the price from structured data or the price printed at the top of the page. Each offer gets a `ref`. A `null` price means the page did not show one. |
 | `show_products` | Shows up to 3 refs as cards. Card data comes from the cached search result, so the model cannot change a price or link. Google Shopping links are replaced by the store's own product page when a search finds one on the store's domain with the same model number; otherwise the card links to a Google search for that product and store. After any tool returns refs, the next round is forced to call `show_products`. |
-| `web_search` | Google search, Hong Kong. Titles, links, snippets. |
+| `web_search` | Google search in `region`. Titles, links, snippets. |
 | `open_page` | Reads one https page now: JSON-LD product, price, picture, page text. Private and local addresses are refused. A store product page returns a `ref`. |
 
 Page text is treated as data. Text that tries to instruct an AI agent is flagged to the model and on the card.

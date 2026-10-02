@@ -226,6 +226,12 @@ a.card:hover {
   font-weight: 700;
 }
 
+.price.unknown {
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 600;
+}
+
 .store {
   display: flex;
   flex-wrap: wrap;
