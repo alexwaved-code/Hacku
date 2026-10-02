@@ -49,8 +49,34 @@ const HackuCart = (() => {
   }
 
   function has(product) {
+    return qtyOf(product) > 0;
+  }
+
+  function qtyOf(product) {
+    const found = load().find((item) => item.id === idOf(product));
+    return found ? Number(found.qty) || 1 : 0;
+  }
+
+  function setQty(product, qty) {
     const id = idOf(product);
-    return load().some((item) => item.id === id);
+    const next = Math.floor(Number(qty));
+    if (!Number.isFinite(next) || next < 1) {
+      remove(id);
+      return 0;
+    }
+    const items = load();
+    const found = items.find((item) => item.id === id);
+    if (!found) {
+      add(product);
+      const created = load();
+      const item = created.find((entry) => entry.id === id);
+      if (item) item.qty = next;
+      save(created);
+      return next;
+    }
+    found.qty = next;
+    save(items);
+    return next;
   }
 
   function remove(id) {
@@ -70,5 +96,5 @@ const HackuCart = (() => {
     return items;
   }
 
-  return { load, add, has, remove, removeMany, count, idOf };
+  return { load, add, has, qtyOf, setQty, remove, removeMany, count, idOf };
 })();

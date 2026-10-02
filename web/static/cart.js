@@ -31,7 +31,7 @@ function render() {
   if (notice) cart.append(el("p", `notice ${notice.kind}`, notice.text));
   cart.append(mandateBlock(all));
   if (!items.length) {
-    cart.append(el("p", "empty", "購物車是空的。回到對話，在推薦商品上按「加入購物車」。"));
+    cart.append(el("p", "empty", "購物車是空的。回到對話，按商品卡右下角的購物車圖示。"));
     return;
   }
   for (const group of all) cart.append(groupBlock(group));
