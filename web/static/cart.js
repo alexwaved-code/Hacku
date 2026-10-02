@@ -33,7 +33,7 @@ function render() {
   cart.append(mandateBlock(all));
   cart.append(el("p", `mode-note ${live() ? "live" : ""}`, modeText()));
   if (!items.length) {
-    cart.append(el("p", "empty", "購物車是空的。回到對話，在推薦商品上按「加入購物車」，或直接請助理幫你買。"));
+    cart.append(el("p", "empty", "購物車是空的。回到對話，按商品卡右下角的購物車圖示，或直接請助理幫你買。"));
   } else {
     for (const group of all) cart.append(groupBlock(group));
   }

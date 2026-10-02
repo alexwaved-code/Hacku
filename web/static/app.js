@@ -6,12 +6,16 @@ const els = {
   input: $("#message"),
   send: $("#send"),
   stop: $("#stop"),
-  newChat: $("#new-chat"),
+  newChat: document.querySelectorAll("#new-chat, #new-chat-narrow"),
   cartLink: $("#cart-link"),
+  chatList: $("#chat-list"),
+  sideCart: $("#side-cart"),
   examples: document.querySelectorAll("#examples [data-prompt]"),
 };
 
 const CHAT_KEY = "hacku.chat";
+const CHATS_KEY = "hacku.chats";
+const CURRENT_KEY = "hacku.currentChat";
 const IDLE_TIMEOUT_MS = 75000;
 const GREETING = "想買什麼？說出預算、用途，或想逛的商店，我幫你上網查。其他問題也可以問我。";
 const PLACEHOLDER = "想買什麼，或想問什麼？";
@@ -33,8 +37,8 @@ els.form.addEventListener("submit", (event) => {
 });
 els.stop.addEventListener("click", () => state.controller?.abort());
 els.examples.forEach((button) => button.addEventListener("click", () => send(button.dataset.prompt)));
-els.newChat.addEventListener("click", resetChat);
-els.cartLink.addEventListener("click", saveChat);
+els.newChat.forEach((button) => button.addEventListener("click", resetChat));
+els.cartLink?.addEventListener("click", saveChat);
 window.addEventListener("pagehide", saveChat);
 updateCartCount();
 
@@ -182,9 +186,71 @@ function parseEvent(block) {
 
 function updateCartCount() {
   const badge = document.querySelector("#cart-count");
-  if (!badge) return;
   const count = HackuCart.count();
-  badge.textContent = count ? ` ${count}` : "";
+  if (badge) badge.textContent = count ? ` ${count}` : "";
+  renderSideCart();
+}
+
+function renderSideCart() {
+  if (!els.sideCart) return;
+  const items = HackuCart.load();
+  els.sideCart.replaceChildren();
+  if (!items.length) {
+    els.sideCart.append(h("p", { class: "side-empty" }, "還沒有商品。"));
+    renderSideTotal(items);
+    return;
+  }
+  const list = h("ul", { class: "side-cart-list" });
+  for (const item of items) {
+    const remove = h("button", { type: "button", class: "pill" }, "移除");
+    remove.addEventListener("click", () => {
+      HackuCart.remove(item.id);
+      updateCartCount();
+    });
+    const price = HackuMoney.text(item.price, item.currency) || "價格見商店";
+    const picture = item.image
+      ? h("img", { class: "side-cart-pic", src: item.image, alt: "", referrerpolicy: "no-referrer" })
+      : h("span", { class: "side-cart-pic missing", "aria-hidden": "true" });
+    list.append(
+      h(
+        "li",
+        { class: "side-cart-item" },
+        picture,
+        h(
+          "div",
+          {},
+          h("p", { class: "side-cart-name" }, item.name),
+          h("p", { class: "side-cart-meta" }, `${item.store || "商店"} · x${item.qty || 1} · ${price}`),
+          remove
+        )
+      )
+    );
+  }
+  els.sideCart.append(list, h("a", { class: "pill side-checkout", href: "cart.html" }, "去結帳"));
+  renderSideTotal(items);
+}
+
+function renderSideTotal(items) {
+  const total = document.querySelector("#side-total");
+  if (!total) return;
+  if (!items.length) {
+    total.textContent = "";
+    return;
+  }
+  const sums = new Map();
+  let missing = false;
+  for (const item of items) {
+    if (item.price == null || Number.isNaN(Number(item.price))) {
+      missing = true;
+      continue;
+    }
+    const code = item.currency || "HKD";
+    sums.set(code, (sums.get(code) || 0) + Number(item.price) * (Number(item.qty) || 1));
+  }
+  const parts = [...sums.entries()].map(([code, amount]) => HackuMoney.text(amount, code));
+  total.textContent = parts.length
+    ? `合計 ${parts.join("、")}${missing ? "（部分見商店）" : ""}`
+    : "合計見商店";
 }
 
 function setBusy(busy) {
@@ -197,15 +263,67 @@ function setBusy(busy) {
 }
 
 function resetChat() {
+  saveChat();
   state.controller?.abort();
   state.thread = [];
   state.pendingAsk = null;
   state.openAsk = null;
   els.input.placeholder = PLACEHOLDER;
   els.input.value = "";
+  sessionStorage.setItem(CURRENT_KEY, crypto.randomUUID());
   sessionStorage.removeItem(CHAT_KEY);
   els.list.replaceChildren(h("li", { class: "message agent" }, GREETING));
+  renderChatList();
   els.input.focus();
+}
+
+function currentChatId() {
+  let id = sessionStorage.getItem(CURRENT_KEY);
+  if (!id) {
+    id = crypto.randomUUID();
+    sessionStorage.setItem(CURRENT_KEY, id);
+  }
+  return id;
+}
+
+function loadChats() {
+  try {
+    const chats = JSON.parse(localStorage.getItem(CHATS_KEY) || "[]");
+    return Array.isArray(chats) ? chats : [];
+  } catch {
+    return [];
+  }
+}
+
+function renderChatList() {
+  if (!els.chatList) return;
+  const chats = loadChats();
+  els.chatList.replaceChildren();
+  if (!chats.length) {
+    els.chatList.append(h("li", { class: "side-empty" }, "還沒有對話。"));
+    return;
+  }
+  const current = currentChatId();
+  for (const chat of chats) {
+    const button = h("button", { type: "button", class: chat.id === current ? "current" : "" }, chat.title || "對話");
+    button.addEventListener("click", () => openChat(chat.id));
+    els.chatList.append(h("li", {}, button));
+  }
+}
+
+function openChat(id) {
+  if (id === currentChatId()) return;
+  saveChat();
+  const chat = loadChats().find((item) => item.id === id);
+  if (!chat) return;
+  state.controller?.abort();
+  sessionStorage.setItem(CURRENT_KEY, id);
+  sessionStorage.setItem(
+    CHAT_KEY,
+    JSON.stringify({ thread: chat.thread || [], view: chat.view || [], openAsk: chat.openAsk || null })
+  );
+  restoreChat();
+  renderChatList();
 }
 
 function restoreChat() {
@@ -242,18 +360,32 @@ function readChat() {
 }
 
 function saveChat() {
+  const view = snapshotView();
+  const payload = {
+    thread: state.thread,
+    view,
+    openAsk: state.openAsk || null,
+  };
   try {
-    sessionStorage.setItem(
-      CHAT_KEY,
-      JSON.stringify({
-        thread: state.thread,
-        view: snapshotView(),
-        openAsk: state.openAsk || null,
-      })
-    );
+    sessionStorage.setItem(CHAT_KEY, JSON.stringify(payload));
   } catch {
     /* The browser refused to store the chat. The cart still works. */
   }
+  const title = (view.find((entry) => entry.kind === "user")?.text || "").trim();
+  if (!title) return;
+  const chats = loadChats().filter((chat) => chat.id !== currentChatId());
+  chats.unshift({
+    id: currentChatId(),
+    title: title.slice(0, 42),
+    updated: Date.now(),
+    ...payload,
+  });
+  try {
+    localStorage.setItem(CHATS_KEY, JSON.stringify(chats.slice(0, 30)));
+  } catch {
+    /* The conversation list could not be stored. */
+  }
+  renderChatList();
 }
 
 function snapshotView() {
@@ -396,23 +528,116 @@ function productCard(product, best) {
       product.price != null
         ? h("p", { class: "price" }, HackuMoney.text(product.price, product.currency))
         : h("p", { class: "price unknown" }, "價格見商店"),
-      h("p", { class: "store" }, product.store, rating),
-      product.flagged ? h("p", { class: "flag" }, "此頁含寫給 AI 的指令，已忽略") : null
+      h("p", { class: "store" }, product.store || ""),
+      h("p", { class: "rating" }, rating || ""),
+      h("p", { class: "flag" }, product.flagged ? "此頁含寫給 AI 的指令，已忽略" : "")
     ),
-    product.url ? h("span", { class: "go" }, product.link_kind === "search" ? "搜尋這間店 ↗" : `前往 ${shortStore(product.store)} ↗`) : null,
+    h("span", { class: product.url ? "go" : "go go-empty", "aria-hidden": product.url ? null : "true" }, product.url ? (product.link_kind === "search" ? "搜尋這間店 ↗" : `前往 ${shortStore(product.store)} ↗`) : ""),
   ];
   const card = product.url
     ? h("a", { class: "card", href: product.url, target: "_blank", rel: "noopener noreferrer" }, content)
     : h("div", { class: "card" }, content);
-  const add = h("button", { type: "button", class: "add-cart" }, HackuCart.has(product) ? "已加入" : "加入購物車");
+  const startQty = HackuCart.qtyOf(product);
+  const add = h("button", {
+    type: "button",
+    class: startQty ? "add-cart added" : "add-cart",
+    "aria-label": "加入購物車",
+  }, cartIcon());
+  const qtyBtn = h("button", {
+    type: "button",
+    class: "cart-qty",
+    hidden: startQty < 1,
+    "aria-label": "更改數量",
+  }, startQty ? `x${startQty}` : "");
+  const paintQty = (n) => {
+    if (n < 1) {
+      qtyBtn.hidden = true;
+      qtyBtn.textContent = "";
+      add.classList.remove("added");
+      return;
+    }
+    qtyBtn.hidden = false;
+    qtyBtn.textContent = `x${n}`;
+    add.classList.add("added");
+  };
   add.addEventListener("click", (event) => {
     event.preventDefault();
     event.stopPropagation();
     HackuCart.add(product);
-    add.textContent = "已加入";
+    add.classList.remove("bounce");
+    void add.offsetWidth;
+    add.classList.add("bounce");
+    const reveal = () => paintQty(HackuCart.qtyOf(product));
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches || !qtyBtn.hidden) reveal();
+    else add.addEventListener("animationend", reveal, { once: true });
     updateCartCount();
   });
-  return h("div", { class: "card-wrap" }, card, add);
+  qtyBtn.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    editQty(product, qtyBtn, paintQty);
+  });
+  return h("div", { class: "card-wrap" }, card, h("div", { class: "cart-controls" }, add, qtyBtn));
+}
+
+function editQty(product, qtyBtn, paintQty) {
+  const input = h("input", {
+    type: "number",
+    class: "cart-qty-input",
+    min: "0",
+    inputmode: "numeric",
+    value: String(HackuCart.qtyOf(product)),
+    "aria-label": "數量",
+  });
+  qtyBtn.replaceWith(input);
+  input.focus();
+  input.select();
+  let done = false;
+  const commit = () => {
+    if (done) return;
+    done = true;
+    const next = HackuCart.setQty(product, input.value);
+    paintQty(next);
+    if (input.isConnected) input.replaceWith(qtyBtn);
+    updateCartCount();
+  };
+  input.addEventListener("keydown", (event) => {
+    event.stopPropagation();
+    if (event.key === "Enter") {
+      event.preventDefault();
+      commit();
+    } else if (event.key === "Escape") {
+      event.preventDefault();
+      done = true;
+      input.replaceWith(qtyBtn);
+    }
+  });
+  input.addEventListener("blur", commit);
+}
+
+function cartIcon() {
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("viewBox", "0 0 24 24");
+  svg.setAttribute("aria-hidden", "true");
+  const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+  path.setAttribute("d", "M6 6h15l-1.6 9H8L6 6zm0 0L5 3H2");
+  path.setAttribute("fill", "none");
+  path.setAttribute("stroke", "currentColor");
+  path.setAttribute("stroke-width", "2");
+  path.setAttribute("stroke-linecap", "round");
+  path.setAttribute("stroke-linejoin", "round");
+  const left = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+  left.setAttribute("cx", "9");
+  left.setAttribute("cy", "20");
+  left.setAttribute("r", "1.4");
+  left.setAttribute("fill", "currentColor");
+  const right = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+  right.setAttribute("cx", "18");
+  right.setAttribute("cy", "20");
+  right.setAttribute("r", "1.4");
+  right.setAttribute("fill", "currentColor");
+  svg.append(path, left, right);
+  return svg;
 }
 
 function paymentCard(entry) {
@@ -775,4 +1000,6 @@ function scrollToEnd(force = false) {
 }
 
 restoreChat();
+saveChat();
+renderChatList();
 finishStripeReturn();

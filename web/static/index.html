@@ -7,14 +7,18 @@
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
+    <div class="app">
+    <aside class="side side-chats">
+      <h1>購物助理</h1>
+      <button type="button" id="new-chat" class="pill new-chat">新對話</button>
+      <h2>對話</h2>
+      <ul id="chat-list" class="chat-list"></ul>
+    </aside>
     <main class="chat">
       <header class="chat-header">
-        <div>
-          <h1>購物助理</h1>
-          <p class="sub">上網查真實商品和價錢，也能指定淘寶、Amazon 等商店。說「幫我買」，助理在你的授權上限內準備訂單，你按確認才付款。</p>
-        </div>
+        <h1 class="narrow-title">購物助理</h1>
         <div class="header-actions">
-          <button type="button" id="new-chat" class="pill">新對話</button>
+          <button type="button" id="new-chat-narrow" class="pill">新對話</button>
           <a id="cart-link" class="pill" href="cart.html">購物車<span id="cart-count"></span></a>
         </div>
       </header>
@@ -33,6 +37,18 @@
         </form>
       </footer>
     </main>
+    <aside class="side side-cart">
+      <h2 class="cart-mark" aria-label="購物車">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M6 6h15l-1.6 9H8L6 6zm0 0L5 3H2" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+          <circle cx="9" cy="20" r="1.4" fill="currentColor"></circle>
+          <circle cx="18" cy="20" r="1.4" fill="currentColor"></circle>
+        </svg>
+      </h2>
+      <div id="side-cart" class="side-cart"></div>
+      <p id="side-total" class="side-total"></p>
+    </aside>
+    </div>
     <script src="money.js"></script>
     <script src="cart-store.js"></script>
     <script src="app.js"></script>

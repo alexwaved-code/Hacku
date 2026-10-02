@@ -31,12 +31,164 @@ button {
   font: inherit;
 }
 
+.app {
+  display: grid;
+  grid-template-columns: 240px minmax(0, 1fr) 300px;
+  height: 100dvh;
+  min-height: 100%;
+}
+
+.side {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+  min-height: 0;
+  padding: 16px;
+  background: var(--paper);
+  overflow: hidden;
+}
+
+.side h1 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 650;
+}
+
+.side h2 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 650;
+}
+
+.cart-mark {
+  width: 36px;
+  height: 36px;
+  margin: 0;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  background: var(--user);
+  color: var(--user-text);
+}
+
+.cart-mark svg {
+  width: 18px;
+  height: 18px;
+}
+
+.narrow-title {
+  display: none;
+  margin: 0;
+  font-size: 18px;
+}
+
+.new-chat {
+  width: 100%;
+}
+
+.chat-list,
+.side-cart {
+  flex: 1;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.chat-list button {
+  width: 100%;
+  margin-bottom: 8px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 8px 10px;
+  background: #fff;
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.chat-list button.current {
+  border-color: var(--ink);
+  font-weight: 650;
+}
+
+.side-empty {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.side-cart-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.side-cart-item {
+  display: grid;
+  grid-template-columns: 44px 1fr;
+  gap: 8px;
+  align-items: center;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #fff;
+}
+
+.side-cart-pic {
+  width: 44px;
+  height: 44px;
+  object-fit: contain;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.side-cart-pic.missing {
+  display: block;
+  border: 1px solid var(--line);
+}
+
+.side-total {
+  margin: 0 0 18px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.side-cart-name {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 650;
+}
+
+.side-cart-meta {
+  margin: 4px 0 8px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.side-checkout {
+  display: block;
+  margin-top: 12px;
+  text-align: center;
+}
+
 .chat {
   display: flex;
   flex-direction: column;
   height: 100%;
-  max-width: 760px;
-  margin: 0 auto;
+  min-width: 0;
+  min-height: 0;
+  max-width: none;
+  margin: 0;
   background: var(--panel);
   border-left: 1px solid var(--line);
   border-right: 1px solid var(--line);
@@ -159,6 +311,7 @@ button {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
   gap: 10px;
+  align-items: stretch;
 }
 
 .cards:empty,
@@ -169,6 +322,9 @@ button {
 .card {
   display: flex;
   flex-direction: column;
+  flex: 1;
+  width: 100%;
+  height: 100%;
   border: 1px solid var(--line);
   border-radius: 14px;
   overflow: hidden;
@@ -185,30 +341,80 @@ a.card:hover {
 }
 
 .card-wrap {
+  position: relative;
   display: flex;
-  flex-direction: column;
-  gap: 8px;
+  height: 100%;
+  min-width: 0;
+}
+
+.cart-controls {
+  position: absolute;
+  right: 18px;
+  bottom: 8px;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 4px;
 }
 
 .add-cart {
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  padding: 7px 0;
-  background: #fff;
-  color: var(--ink);
-  font: inherit;
-  font-size: 14px;
-  font-weight: 600;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: var(--user);
+  color: var(--user-text);
   cursor: pointer;
 }
 
-.add-cart:hover {
-  border-color: var(--ink);
+.add-cart svg {
+  width: 16px;
+  height: 16px;
+}
+
+.add-cart.added {
+  background: #2f6b4f;
+}
+
+.add-cart.bounce {
+  animation: cart-bounce 0.4s ease;
+}
+
+@keyframes cart-bounce {
+  0% { transform: scale(1); }
+  35% { transform: scale(1.28); }
+  65% { transform: scale(0.9); }
+  100% { transform: scale(1); }
+}
+
+.cart-qty {
+  border: 0;
+  padding: 0 2px;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.cart-qty-input {
+  width: 42px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 2px 4px;
+  background: #fff;
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
 }
 
 .pic {
   position: relative;
-  aspect-ratio: 4 / 3;
+  aspect-ratio: 3 / 2;
   background: #fff;
   border-bottom: 1px solid var(--line);
 }
@@ -246,14 +452,21 @@ a.card:hover {
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
+  height: 2.8em;
   font-size: 14px;
   line-height: 1.4;
 }
 
-.price {
+.price,
+.price.unknown {
+  height: 27px;
   margin-top: 6px !important;
+  overflow: hidden;
   font-size: 18px;
   font-weight: 700;
+  line-height: 27px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 .price.unknown {
@@ -262,20 +475,24 @@ a.card:hover {
   font-weight: 600;
 }
 
-.store {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 2px 8px;
-  color: var(--muted);
+.store,
+.rating,
+.flag {
+  height: 1.3em;
+  margin-top: 2px !important;
+  overflow: hidden;
   font-size: 13px;
+  line-height: 1.3em;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
+.store,
 .rating {
-  white-space: nowrap;
+  color: var(--muted);
 }
 
 .flag {
-  margin-top: 6px !important;
   color: #8a3d2f;
   font-size: 12px;
 }
@@ -285,7 +502,8 @@ a.card:hover {
 }
 
 .go {
-  margin: 8px 12px 12px;
+  display: block;
+  margin: auto 86px 12px 12px;
   padding: 7px 0;
   border-radius: 10px;
   background: var(--user);
@@ -293,6 +511,10 @@ a.card:hover {
   font-size: 14px;
   font-weight: 600;
   text-align: center;
+}
+
+.go-empty {
+  visibility: hidden;
 }
 
 .ask {
@@ -520,6 +742,34 @@ a.card:hover {
   }
 }
 
+@media (max-width: 900px) {
+  .app {
+    display: block;
+    height: auto;
+  }
+
+  .side {
+    display: none;
+  }
+
+  .narrow-title {
+    display: block;
+  }
+
+  .chat {
+    max-width: 760px;
+    height: 100dvh;
+    margin: 0 auto;
+    border: 0;
+  }
+}
+
+@media (min-width: 901px) {
+  .header-actions {
+    display: none;
+  }
+}
+
 @media (max-width: 640px) {
   .chat {
     border: 0;
@@ -543,7 +793,7 @@ a.card:hover {
 
   .card {
     display: grid;
-    grid-template-columns: 92px 1fr;
+    grid-template-columns: 76px 1fr;
     grid-template-rows: 1fr auto;
   }
 
@@ -577,7 +827,7 @@ a.card:hover {
 
   .go {
     justify-self: start;
-    margin: 8px 12px 10px;
+    margin: 8px 86px 10px 12px;
     padding: 5px 12px;
     font-size: 13px;
   }
