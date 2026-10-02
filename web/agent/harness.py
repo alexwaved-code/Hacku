@@ -8,7 +8,7 @@ from datetime import datetime, timedelta, timezone
 import llm
 from llm import Busy, UpstreamError
 
-from .tools import ASK_TOOL, BUY_TOOL, CARD_TOOL, CART, CART_TOOL, LANG, PAGE_TOOL, TOOL_SCHEMAS, app_state, cart_view, clean_questions, has_refs, pick_cards, refresh_cards, run_tool, say, set_cart, tool_label
+from .tools import ASK_TOOL, BUY_TOOL, CARD_TOOL, CART, CART_TOOL, LANG, NEXT_TOOL, PAGE_TOOL, TOOL_SCHEMAS, app_state, cart_view, clean_actions, clean_questions, has_refs, pick_cards, refresh_cards, run_tool, say, set_cart, tool_label
 
 MAX_ROUNDS = 7
 MAX_PARALLEL = 4
@@ -28,6 +28,8 @@ ENGLISH_PAGE = (
 LANGS = ("zh", "en")
 OLD_TOOL_CHARS = 1200
 ASK_SCHEMAS = [schema for schema in TOOL_SCHEMAS if schema["function"]["name"] == ASK_TOOL]
+NEXT_SCHEMAS = [schema for schema in TOOL_SCHEMAS if schema["function"]["name"] == NEXT_TOOL]
+ANSWER_SCHEMAS = ASK_SCHEMAS + NEXT_SCHEMAS
 
 SYSTEM_PROMPT_TEMPLATE = """You are a friendly assistant inside a chat page. Your strength is researching real products on the live web, but you also chat and answer any other question. The user is in Hong Kong unless they say otherwise. Now: {now} (Hong Kong time).
 
@@ -39,6 +41,7 @@ Tools:
 - update_cart: adds products (by ref) to the shopper's cart, changes a cart line's quantity, removes lines, or empties the cart.
 - control_page: runs this app for the shopper: open the cart panel, go to the cart page (checkout and payment authorization) or the orders page, start a new chat, or switch the page to Chinese or English.
 - buy: prepares an order for products from the cards. It pays nothing. The page shows the order with a 確認付款 button; only the shopper's press opens Stripe, where they pay and give a Hong Kong delivery address, inside the spending mandate they signed (a per-order cap per currency). The payment service checks the mandate, a cooling period, and a second verifier model; you cannot override them.
+- next_steps: 3 to 5 chips under the input. Call it in the same round as every final reply the shopper can read. Each chip is a short label and the exact next message. Base them on this chat (last request, shown cards, cart, an open trade-off). Do not offer generic starters that ignore this chat.
 
 Cart:
 - The shopper's cart is listed at the end of this message, one line each (c1, c2…), as it is right now. Answer questions about it (what is in it, the total, which is cheaper elsewhere) straight from that list.
@@ -70,6 +73,7 @@ Keep text short:
 - Other answers: at most 4 short sentences.
 - Plain sentences only: no headings, bold, lists, tables, links, or spec dumps.
 - Never ask a shopping question in plain text. Use ask_user.
+- When you write the final answer, also call next_steps in that same round.
 - A tool result with "user_reply" means the user typed instead of choosing. Treat it as their answer or a new request.
 - A tool result with "skipped" means the user skipped the questions. Make a sensible guess and go on.
 
@@ -124,19 +128,23 @@ def _run(config, history, emit):
 
     for round_no in range(MAX_ROUNDS):
         allow_tools = round_no < MAX_ROUNDS - 1
-        tools = ASK_SCHEMAS if answer_now else TOOL_SCHEMAS
+        tools = ANSWER_SCHEMAS if answer_now else TOOL_SCHEMAS
         emit({"type": "phase", "phase": "answer" if answer_now else "plan" if round_no == 0 else "think"})
         text, calls = _round(config, messages, emit, "auto" if allow_tools else "none", tools)
         calls = [call for call in calls if call["name"]] if allow_tools else []
         if answer_now:
-            calls = [call for call in calls if call["name"] == ASK_TOOL]
+            calls = [call for call in calls if call["name"] in (ASK_TOOL, NEXT_TOOL)]
+
+        next_call = next((call for call in calls if call["name"] == NEXT_TOOL), None)
+        actions = clean_actions(_parse_args(next_call["arguments"])) if next_call else []
+        research = [call for call in calls if call["name"] not in (ASK_TOOL, NEXT_TOOL)]
 
         if not calls:
             if not text.strip():
                 text = text_for(CARDS_TEXT if cards_shown else FALLBACK_TEXT)
                 emit({"type": "delta", "text": text})
             added.append({"role": "assistant", "content": text})
-            _done(emit, added, pending)
+            _finish(config, emit, messages, added, pending, text, actions)
             return
 
         for index, call in enumerate(calls):
@@ -144,18 +152,20 @@ def _run(config, history, emit):
                 call["id"] = f"call_{round_no}_{index}"
         ask = next((call for call in calls if call["name"] == ASK_TOOL), None)
         questions = clean_questions(_parse_args(ask["arguments"])) if ask else []
-        keep_text = bool(questions and cards_shown and text.strip())
+        keep_text = bool(text.strip() and ((questions and cards_shown) or (actions and not research)))
         if text and not keep_text:
             emit({"type": "retract"})
         assistant = _assistant(calls, text if keep_text else None)
         messages.append(assistant)
         added.append(assistant)
 
-        work = [call for call in calls if call["name"] != ASK_TOOL and not (cards_shown and call["name"] == CARD_TOOL)]
+        work = [call for call in research if not (cards_shown and call["name"] == CARD_TOOL)]
         results = _run_calls(work, emit)
         found = []
         for call in calls:
-            if call["name"] == CARD_TOOL and cards_shown:
+            if call["name"] == NEXT_TOOL:
+                model = {"ok": True, "n": len(actions)}
+            elif call["name"] == CARD_TOOL and cards_shown:
                 model = {"error": "Cards are already shown. Answer now."}
             elif call["name"] != ASK_TOOL:
                 model = results[call["id"]]["model"]
@@ -173,6 +183,8 @@ def _run(config, history, emit):
 
         if questions:
             emit({"type": "ask", "id": ask["id"], "questions": questions})
+            if actions and not research:
+                _emit_next(emit, actions)
             _done(emit, added, pending)
             return
 
@@ -180,7 +192,11 @@ def _run(config, history, emit):
         if closing:
             emit({"type": "delta", "text": closing})
             added.append({"role": "assistant", "content": closing})
-            _done(emit, added, pending)
+            _finish(config, emit, messages, added, pending, closing, actions)
+            return
+
+        if actions and not research:
+            _finish(config, emit, messages, added, pending, text, actions)
             return
 
         if found and not cards_shown:
@@ -195,7 +211,7 @@ def _run(config, history, emit):
             if shown["ok"]:
                 pending = (call["id"], [row["ref"] for row in shown["model"]["shown"]], shown["ui"]["items"])
 
-    _done(emit, added, pending)
+    _finish(config, emit, messages, added, pending, "", [])
 
 
 def _done(emit, added, pending):
@@ -205,6 +221,27 @@ def _done(emit, added, pending):
         if cards:
             emit({"type": "cards", "id": call_id, "items": cards})
     emit({"type": "done", "messages": added})
+
+
+def _finish(config, emit, messages, added, pending, text, actions):
+    _emit_next(emit, actions or _suggest_next(config, [*messages, {"role": "assistant", "content": text}] if text else messages))
+    _done(emit, added, pending)
+
+
+def _emit_next(emit, actions):
+    if actions:
+        emit({"type": "next", "actions": actions})
+
+
+def _suggest_next(config, messages):
+    try:
+        _text, calls = _round(config, messages, lambda _event: None, "required", NEXT_SCHEMAS)
+    except Exception:
+        return []
+    for call in calls:
+        if call.get("name") == NEXT_TOOL:
+            return clean_actions(_parse_args(call["arguments"]))
+    return []
 
 
 def _keep_only_cards(replies, refs):
@@ -229,8 +266,9 @@ def _assistant(calls, content):
 
 def _closing(calls, results):
     """The reply when it is already known, so the turn ends without one more model round."""
-    if {call["name"] for call in calls} <= {BUY_TOOL, CART_TOOL, PAGE_TOOL} and all((results.get(call["id"]) or {}).get("reply") for call in calls):
-        return " ".join(results[call["id"]]["reply"] for call in calls)
+    work = [call for call in calls if call["name"] not in (ASK_TOOL, NEXT_TOOL)]
+    if work and {call["name"] for call in work} <= {BUY_TOOL, CART_TOOL, PAGE_TOOL} and all((results.get(call["id"]) or {}).get("reply") for call in work):
+        return " ".join(results[call["id"]]["reply"] for call in work)
     return None
 
 

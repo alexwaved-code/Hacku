@@ -300,3 +300,11 @@ Quick-action chips stay under the input. The dock hint and the welcome subtitle 
 
 New chat: title and examples only. Five chips under the composer (reorder, orders, example searches). No 「即時上網比價」 line.
 
+## 2026-10-03 02:20
+
+Quick-action chips come from the model after each reply, from `next_steps` in that same round. They follow the last request, the shown cards, and the cart. A new chat has none until the first reply. The page keeps the last set on the conversation.
+
+**Checked**
+
+58 unit tests. Live: new chat has no dock chips; after 「你好」 the chips were 搜尋產品 / 查看購物車 / 查訂單狀態; after 「購物車裡有什麼」 they became 搜尋產品 / 查看訂單 / 瀏覽熱門商品.
+

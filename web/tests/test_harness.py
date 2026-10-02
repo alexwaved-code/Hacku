@@ -92,7 +92,7 @@ class HarnessTest(TempData):
         self.assertEqual([item["name"] for item in cards["ui"]["items"]], ["A1", "B1", "A2", "B2", "A3"])
         kinds = [e["type"] for e in events]
         self.assertLess(kinds.index("tool_result"), kinds.index("delta"))
-        self.assertEqual([t["function"]["name"] for t in opened[1].body["tools"]], ["ask_user"])
+        self.assertEqual([t["function"]["name"] for t in opened[1].body["tools"]], ["ask_user", "next_steps"])
         seen = [json.loads(m["content"]) for m in opened[1].body["messages"] if m.get("tool_call_id") == "s1"]
         self.assertEqual([row["name"] for row in seen[0]["offers"]], ["B1", "B2"])
         self.assertEqual(events[-1]["messages"][-1], {"role": "assistant", "content": "首選 A1。"})
@@ -185,6 +185,58 @@ class HarnessTest(TempData):
         events, opened = self.run_turn(FakeStream([say("你好")]))
         self.assertEqual(len(opened), 1)
         self.assertEqual(events[-1]["messages"][-1]["content"], "你好")
+
+    def test_next_steps_follow_the_reply(self):
+        actions = {
+            "actions": [
+                {"label": "比較 A1 A2", "prompt": "A1 和 A2 差在哪？"},
+                {"label": "買 A1", "prompt": "買第一個"},
+                {"label": "換品牌", "prompt": "有沒有 Anker 的？"},
+            ]
+        }
+        events, opened = self.run_turn(
+            FakeStream([two_searches()]),
+            FakeStream([say("首選 A1。"), call("next_steps", actions, "n1")]),
+        )
+        self.assertEqual(len(opened), 2)
+        nxt = next(event for event in events if event["type"] == "next")
+        self.assertEqual(nxt["actions"], actions["actions"])
+
+    def test_next_steps_are_asked_if_the_reply_omits_them(self):
+        actions = {
+            "actions": [
+                {"label": "買 A1", "prompt": "買第一個"},
+                {"label": "更平的", "prompt": "有沒有更便宜的充電線？"},
+                {"label": "加購物車", "prompt": "第一個加進購物車"},
+            ]
+        }
+        events, opened = self.run_turn(
+            FakeStream([two_searches()]),
+            FakeStream([say("首選 A1。")]),
+            FakeStream([call("next_steps", actions, "n1")]),
+        )
+        self.assertEqual(len(opened), 3)
+        self.assertEqual(opened[2].body["tool_choice"], "required")
+        self.assertEqual([tool["function"]["name"] for tool in opened[2].body["tools"]], ["next_steps"])
+        nxt = next(event for event in events if event["type"] == "next")
+        self.assertEqual(nxt["actions"], actions["actions"])
+
+    def test_clean_actions_keeps_short_unique_prompts(self):
+        raw = {
+            "actions": [
+                {"label": "買第一個", "prompt": "買第一個"},
+                {"label": "買第一個", "prompt": "買第一個"},
+                {"label": "", "prompt": "空的"},
+                {"text": "比較這兩個", "message": "A1 和 A2 差在哪？"},
+            ]
+        }
+        self.assertEqual(
+            tools.clean_actions(raw),
+            [
+                {"label": "買第一個", "prompt": "買第一個"},
+                {"label": "比較這兩個", "prompt": "A1 和 A2 差在哪？"},
+            ],
+        )
 
 
     def cart_line(self, sealed=True):

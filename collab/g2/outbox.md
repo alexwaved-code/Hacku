@@ -1,5 +1,9 @@
 # G2 outbox
 
+## 2026-10-03 02:20 — to G1 and the integrator
+
+NOTE: Quick-action chips under the input now come from the model (`next_steps` / SSE `next`), based on the last reply in that chat. A new chat has none until the first answer. No change to `pay/` or `cart.html`.
+
 ## 2026-10-03 02:12 — to G1 and the integrator
 
 NOTE: Quick-action chips now sit under the input on every screen. The dock hint and the welcome subtitle are removed. No change to `pay/` or `cart.html`.

@@ -37,7 +37,7 @@ const cardPainters = new Set();
 let cartSeen = null;
 let chatsSeen = null;
 let lastMandate = null;
-let lastOrders = [];
+let lastQuick = [];
 const comparing = new Map();
 const MAX_COMPARE = 3;
 const NUMERALS = { 一: 1, 二: 2, 兩: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9, 十: 10, first: 1, second: 2, third: 3, fourth: 4, fifth: 5 };
@@ -286,46 +286,28 @@ function actionChip(icon, label, prompt) {
   return h("button", { type: "button", class: "quick-chip", onclick: () => send(prompt) }, icon, h("span", {}, label));
 }
 
-function nextActions(extra = []) {
-  const items = [];
+function setQuick(actions) {
   const seen = new Set();
-  const add = (icon, label, prompt) => {
-    if (!label || !prompt || seen.has(prompt) || items.length >= 5) return;
+  lastQuick = [];
+  for (const item of Array.isArray(actions) ? actions : []) {
+    const label = String(item.label || "").trim().slice(0, 24);
+    const prompt = String(item.prompt || item.label || "").trim().slice(0, 80);
+    if (!label || !prompt || seen.has(prompt)) continue;
     seen.add(prompt);
-    items.push(actionChip(icon, label, prompt));
-  };
-  for (const [label, prompt] of extra) add(null, label, prompt);
-  const count = HackuCart.count();
-  if (count) add(cartIcon(), t("quickCheckout", count), t("quickCheckoutAsk"));
-  const names = [];
-  for (const order of lastOrders) {
-    const name = order.items?.[0]?.name;
-    if (name && !names.includes(name)) names.push(name);
+    lastQuick.push({ label, prompt });
+    if (lastQuick.length >= 5) break;
   }
-  for (const name of names.slice(0, 2)) {
-    add(lineIcon("M4 12a8 8 0 0 1 14-5.3M20 4v4h-4M20 12a8 8 0 0 1-14 5.3M4 20v-4h4"), t("reorder", name.length > 22 ? `${name.slice(0, 22)}…` : name), t("reorderAsk", name));
-  }
-  if (lastOrders.length) add(lineIcon("M4 8l8-4 8 4v8l-8 4-8-4V8zM4 8l8 4 8-4M12 12v8"), t("quickOrders"), t("quickOrders"));
-  for (const [title, prompt] of t("examples")) add(null, title, prompt);
-  return items;
+  renderDockQuick();
 }
 
 function renderDockQuick() {
   const box = document.querySelector("#dock-quick");
   if (!box) return;
-  box.replaceChildren(h("div", { class: "quick-row" }, nextActions()));
-}
-
-function loadOrders() {
-  return fetch("/api/orders")
-    .then((response) => (response.ok ? response.json() : null))
-    .then((data) => {
-      lastOrders = Array.isArray(data?.orders) ? data.orders : [];
-      renderDockQuick();
-    })
-    .catch(() => {
-      renderDockQuick();
-    });
+  if (!lastQuick.length) {
+    box.replaceChildren();
+    return;
+  }
+  box.replaceChildren(h("div", { class: "quick-row" }, lastQuick.map((item) => actionChip(null, item.label, item.prompt))));
 }
 
 function setupVoice() {
@@ -563,6 +545,7 @@ async function streamChat(controller, turn) {
         else if (event.type === "cards") turn.showCards(event.items, true);
         else if (event.type === "phase") turn.phase(event.phase);
         else if (event.type === "ask") turn.ask(event);
+        else if (event.type === "next") setQuick(event.actions);
         else if (event.type === "error") throw new Error(event.message || t("agentError"));
         else if (event.type === "done") added = Array.isArray(event.messages) ? event.messages : [];
       }
@@ -839,6 +822,7 @@ function resetChat() {
   els.input.value = "";
   sessionStorage.setItem(CURRENT_KEY, crypto.randomUUID());
   sessionStorage.removeItem(CHAT_KEY);
+  setQuick([]);
   els.list.replaceChildren(welcomeItem());
   renderChatList();
   closeDrawers();
@@ -1013,7 +997,7 @@ function openChat(id) {
   sessionStorage.setItem(CURRENT_KEY, id);
   sessionStorage.setItem(
     CHAT_KEY,
-    JSON.stringify({ thread: chat.thread || [], view: chat.view || [], openAsk: chat.openAsk || null })
+    JSON.stringify({ thread: chat.thread || [], view: chat.view || [], openAsk: chat.openAsk || null, next: chat.next || [] })
   );
   restoreChat();
   renderChatList();
@@ -1025,6 +1009,7 @@ function restoreChat() {
   state.openAsk = null;
   els.input.placeholder = t("placeholder");
   if (!saved) {
+    setQuick([]);
     els.list.replaceChildren(welcomeItem());
     return;
   }
@@ -1044,6 +1029,7 @@ function restoreChat() {
     state.openAsk = saved.openAsk;
     els.input.placeholder = t("askPlaceholder");
   }
+  setQuick(saved.next);
 }
 
 function readChat() {
@@ -1062,6 +1048,7 @@ function saveChat() {
     thread: state.thread,
     view,
     openAsk: state.openAsk || null,
+    next: lastQuick,
   };
   try {
     sessionStorage.setItem(CHAT_KEY, JSON.stringify(payload));
@@ -1254,9 +1241,18 @@ function createTurn() {
       const retry = h("button", { type: "button", class: "act-btn act-retry", title: t("regenerate") }, retryIcon(), t("regenerate"));
       retry.addEventListener("click", onRetry);
       if (said) item.append(h("div", { class: "turn-actions" }, copy, retry));
-      if (!state.pendingAsk && item._products?.length) {
-        const chips = nextActions(t("followUps").map((prompt) => [prompt, prompt]));
-        if (chips.length) item.append(h("div", { class: "quick turn-quick" }, h("div", { class: "quick-row" }, chips)));
+      if (!state.pendingAsk && lastQuick.length) {
+        item.append(
+          h(
+            "div",
+            { class: "quick turn-quick" },
+            h(
+              "div",
+              { class: "quick-row" },
+              lastQuick.map((entry) => actionChip(null, entry.label, entry.prompt))
+            )
+          )
+        );
       }
       scrollToEnd(true);
     },
@@ -2014,4 +2010,4 @@ restoreChat();
 saveChat();
 renderChatList();
 finishStripeReturn();
-loadOrders();
+renderDockQuick();

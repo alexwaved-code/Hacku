@@ -1641,6 +1641,10 @@ a.card:hover .pic img {
   margin: 10px 0 0;
 }
 
+.dock-quick:empty {
+  margin: 0;
+}
+
 .dock-quick .quick-row {
   justify-content: center;
 }
