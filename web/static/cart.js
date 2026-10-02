@@ -3,7 +3,6 @@ const PENDING_KEY = "hacku.checkout";
 const DAY_CHOICES = [1, 7, 30];
 
 let mandate = null;
-let card = null;
 let orders = null;
 let editing = false;
 let notice = null;
@@ -31,37 +30,32 @@ function render() {
   const all = groups(items);
   cart.replaceChildren();
   if (notice) cart.append(el("p", `notice ${notice.kind}`, notice.text));
-  cart.append(mandateBlock(all), cardBlock());
+  cart.append(mandateBlock(all));
+  cart.append(el("p", `mode-note ${live() ? "live" : ""}`, modeText()));
   if (!items.length) {
     cart.append(el("p", "empty", "購物車是空的。回到對話，按商品卡右下角的購物車圖示，或直接請助理幫你買。"));
   } else {
     for (const group of all) cart.append(groupBlock(group));
-    cart.append(el("p", "test-note", "Stripe 測試模式：卡號 4242 4242 4242 4242，任何未來日期與 CVC。不會扣真錢。"));
   }
   cart.append(ordersBlock());
 }
 
-function cardBlock() {
-  const box = el("section", "wallet");
-  if (!card) return box;
-  if (card.saved) {
-    box.append(
-      el("p", "wallet-line", `代理人付款卡：${card.label}。助理準備好訂單後，你在對話按「確認付款」就用這張卡付。`),
-      button("pill", "移除付款卡", () => send("/api/card/forget", {}, "已移除付款卡，對話裡的訂單不能再付款。", (data) => (card = data)))
-    );
-  } else {
-    box.append(
-      el("p", "wallet-line", "還沒有代理人付款卡。存一張後，你在對話說「幫我買」，助理會在授權上限內準備訂單，你按「確認付款」就付款。"),
-      button("pay", "儲存 Stripe 測試卡（Visa 4242）", () => send("/api/card", {}, "已儲存付款卡。", (data) => (card = data)))
-    );
-  }
-  return box;
+function live() {
+  return Boolean(orders?.live);
+}
+
+function modeText() {
+  return live()
+    ? "真實付款：Stripe 會扣你的卡，並請你填香港送貨地址。付款後我們會向商店下單，送到這個地址。正式付款每筆最多 HK$100。"
+    : "Stripe 測試模式：卡號 4242 4242 4242 4242，任何未來日期與 CVC，地址隨意填香港。不會扣真錢，也不會向商店下單。";
 }
 
 function ordersBlock() {
   const box = el("section", "orders");
   if (!orders || !orders.orders.length) return box;
-  box.append(el("h2", "group-title", "付款紀錄"));
+  const admin = el("a", "receipt-link", "代購訂單（向商店下單）↗");
+  admin.href = "orders.html";
+  box.append(el("h2", "group-title", "付款紀錄"), admin);
   const list = el("ul", "order-list");
   for (const order of orders.orders) {
     const names = order.items.map((entry) => entry.name).join("、");
@@ -70,7 +64,11 @@ function ordersBlock() {
       el(
         "li",
         "order-row",
-        el("p", "order-main", `${money(order.total, order.currency)} · ${order.via === "agent" ? "助理付款" : "購物車結帳"} · ${when}`),
+        el(
+          "p",
+          "order-main",
+          `${money(order.total, order.currency)} · ${order.via === "agent" ? "助理訂單" : "購物車結帳"} · ${order.live ? "真實付款" : "測試"} · ${when}`
+        ),
         el("p", "order-items", names),
         order.hash ? el("p", "order-hash", `紀錄 ${order.hash.slice(0, 12)}`) : null
       )
@@ -183,7 +181,7 @@ function groupBlock(group) {
   const total = group.missing && known === 0 ? "價格見商店" : group.missing ? `${money(known, group.currency)}（部分價格見商店）` : money(known, group.currency);
   const reason = blocked(group);
   const message = el("p", "pay-message", reason);
-  const pay = button("pay", "用 Stripe 測試付款", () => checkout(group, pay, message));
+  const pay = button("pay", payLabel(), () => checkout(group, pay, message));
   pay.disabled = Boolean(reason);
 
   return el(
@@ -241,8 +239,12 @@ async function checkout(group, pay, message) {
   } catch (error) {
     message.textContent = error.message;
     pay.disabled = false;
-    pay.textContent = "用 Stripe 測試付款";
+    pay.textContent = payLabel();
   }
+}
+
+function payLabel() {
+  return live() ? "用 Stripe 付款（真錢）" : "用 Stripe 測試付款";
 }
 
 async function load(path) {
@@ -255,7 +257,7 @@ async function load(path) {
 }
 
 async function loadAll() {
-  [mandate, card, orders] = await Promise.all([load("/api/mandate"), load("/api/card"), load("/api/orders")]);
+  [mandate, orders] = await Promise.all([load("/api/mandate"), load("/api/orders")]);
 }
 
 async function finishReturn() {
@@ -274,7 +276,8 @@ async function finishReturn() {
         if (pending?.id === session) HackuCart.removeMany(pending.items);
         sessionStorage.removeItem(PENDING_KEY);
         const record = data.hash ? `，紀錄 ${data.hash.slice(0, 12)}` : "";
-        notice = { kind: "ok", text: `付款成功（Stripe 測試模式）：${money(data.amount, data.currency)}${record}。` };
+        const where = data.ship_to ? `，送到 ${data.ship_to}` : "";
+        notice = { kind: "ok", text: `付款成功（${data.live ? "真實付款" : "Stripe 測試模式"}）：${money(data.amount, data.currency)}${where}${record}。` };
       } else {
         notice = { kind: "info", text: "這筆付款還沒完成。" };
       }

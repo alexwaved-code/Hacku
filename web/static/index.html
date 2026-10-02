@@ -8,64 +8,69 @@
   </head>
   <body>
     <div class="app">
-    <aside class="side side-chats">
-      <div class="brand-row">
-        <h1>購物助理</h1>
-        <button type="button" id="new-chat" class="icon-btn new-chat" aria-label="新對話">
-          <svg viewBox="0 0 24 24" aria-hidden="true">
-            <path d="M4 7h16M4 12h16M4 17h16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"></path>
-          </svg>
-        </button>
-      </div>
-      <h2>對話</h2>
-      <ul id="chat-list" class="chat-list"></ul>
-    </aside>
-    <main class="chat">
-      <header class="chat-header">
-        <h1 class="narrow-title">購物助理</h1>
-        <div class="header-actions">
-          <button type="button" id="new-chat-narrow" class="icon-btn" aria-label="新對話">
+      <aside class="side side-chats">
+        <div class="brand-row">
+          <h1>購物助理</h1>
+          <button type="button" id="new-chat" class="icon-btn new-chat" aria-label="新對話">
             <svg viewBox="0 0 24 24" aria-hidden="true">
               <path d="M4 7h16M4 12h16M4 17h16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"></path>
             </svg>
           </button>
-          <a id="cart-link" class="pill" href="cart.html">購物車<span id="cart-count"></span></a>
         </div>
-      </header>
-      <ol id="messages" class="messages" aria-live="polite"></ol>
-      <footer class="dock">
-        <div class="examples" id="examples">
-          <button type="button" class="pill" data-prompt="HK$500 以內，通勤用的降噪耳機">降噪耳機 HK$500 內</button>
-          <button type="button" class="pill" data-prompt="可以充手提電腦的行動電源">充手提電腦的行動電源</button>
-          <button type="button" class="pill" data-prompt="淘寶上的 iPhone 16 手機殼">淘寶手機殼</button>
-        </div>
-        <form id="composer" class="composer">
-          <label class="sr-only" for="message">訊息</label>
-          <input id="message" name="message" type="text" autocomplete="off" placeholder="想買什麼，或想問什麼？" />
-          <button type="submit" id="send">送出</button>
-          <button type="button" id="stop" hidden>停止</button>
-        </form>
-      </footer>
-    </main>
-    <aside class="side side-cart">
-      <h2 class="cart-mark" aria-label="購物車">
-        <svg viewBox="0 0 24 24" aria-hidden="true">
-          <path d="M6 6h15l-1.6 9H8L6 6zm0 0L5 3H2" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
-          <circle cx="9" cy="20" r="1.4" fill="currentColor"></circle>
-          <circle cx="18" cy="20" r="1.4" fill="currentColor"></circle>
-        </svg>
-      </h2>
-      <div id="side-cart" class="side-cart"></div>
-      <div class="side-pay">
-        <p id="side-total" class="side-total"></p>
-        <a id="side-pay" class="pay-icon" href="cart.html" aria-label="去結帳" hidden>
+        <h2>對話紀錄</h2>
+        <ul id="chat-list" class="chat-list"></ul>
+        <nav class="side-links" aria-label="其他頁面">
+          <a href="cart.html">購物車與付款授權</a>
+          <a href="orders.html">代購訂單</a>
+        </nav>
+      </aside>
+      <main class="chat">
+        <header class="chat-header">
+          <h1 class="narrow-title">購物助理</h1>
+          <div class="header-actions">
+            <button type="button" id="new-chat-narrow" class="icon-btn" aria-label="新對話">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M4 7h16M4 12h16M4 17h16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"></path>
+              </svg>
+            </button>
+            <a id="cart-link" class="pill" href="cart.html">購物車<span id="cart-count"></span></a>
+          </div>
+        </header>
+        <ol id="messages" class="messages" aria-live="polite"></ol>
+        <footer class="dock">
+          <div class="examples" id="examples">
+            <button type="button" class="pill" data-prompt="HK$500 以內，通勤用的降噪耳機">降噪耳機 HK$500 內</button>
+            <button type="button" class="pill" data-prompt="可以充手提電腦的行動電源">充手提電腦的行動電源</button>
+            <button type="button" class="pill" data-prompt="淘寶上的 iPhone 16 手機殼">淘寶手機殼</button>
+          </div>
+          <form id="composer" class="composer">
+            <label class="sr-only" for="message">訊息</label>
+            <input id="message" name="message" type="text" autocomplete="off" placeholder="想買什麼，或想問什麼？" />
+            <button type="submit" id="send">送出</button>
+            <button type="button" id="stop" hidden>停止</button>
+          </form>
+        </footer>
+      </main>
+      <aside class="side side-cart">
+        <h2 class="cart-mark" aria-label="購物車">
           <svg viewBox="0 0 24 24" aria-hidden="true">
-            <rect x="3" y="6" width="18" height="12" rx="2" fill="none" stroke="currentColor" stroke-width="2"></rect>
-            <path d="M3 10h18" fill="none" stroke="currentColor" stroke-width="2"></path>
+            <path d="M6 6h15l-1.6 9H8L6 6zm0 0L5 3H2" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+            <circle cx="9" cy="20" r="1.4" fill="currentColor"></circle>
+            <circle cx="18" cy="20" r="1.4" fill="currentColor"></circle>
           </svg>
-        </a>
-      </div>
-    </aside>
+        </h2>
+        <a id="side-mandate" class="side-mandate" href="cart.html" hidden></a>
+        <div id="side-cart" class="side-cart"></div>
+        <div class="side-pay">
+          <p id="side-total" class="side-total"></p>
+          <a id="side-pay" class="pay-icon" href="cart.html" aria-label="去結帳" hidden>
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <rect x="3" y="6" width="18" height="12" rx="2" fill="none" stroke="currentColor" stroke-width="2"></rect>
+              <path d="M3 10h18" fill="none" stroke="currentColor" stroke-width="2"></path>
+            </svg>
+          </a>
+        </div>
+      </aside>
     </div>
     <script src="money.js"></script>
     <script src="cart-store.js"></script>

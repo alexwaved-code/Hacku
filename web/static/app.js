@@ -27,6 +27,7 @@ const state = {
   controller: null,
   pendingAsk: null,
 };
+const cardPainters = new Set();
 
 els.form.addEventListener("submit", (event) => {
   event.preventDefault();
@@ -41,6 +42,7 @@ els.newChat.forEach((button) => button.addEventListener("click", resetChat));
 els.cartLink?.addEventListener("click", saveChat);
 window.addEventListener("pagehide", saveChat);
 updateCartCount();
+renderMandate();
 
 /* ---------- Sending ---------- */
 
@@ -188,6 +190,10 @@ function updateCartCount() {
   const badge = document.querySelector("#cart-count");
   const count = HackuCart.count();
   if (badge) badge.textContent = count ? ` ${count}` : "";
+  for (const painter of cardPainters) {
+    if (painter.node.isConnected) painter.paint(HackuCart.qtyOf(painter.product));
+    else cardPainters.delete(painter);
+  }
   renderSideCart();
 }
 
@@ -196,7 +202,7 @@ function renderSideCart() {
   const items = HackuCart.load();
   els.sideCart.replaceChildren();
   if (!items.length) {
-    els.sideCart.append(h("p", { class: "side-empty" }, "還沒有商品。"));
+    els.sideCart.append(h("p", { class: "side-empty" }, "還沒有商品。按商品卡右下角的購物車圖示加入，或直接跟助理說「幫我買」。"));
     renderSideTotal(items);
     return;
   }
@@ -238,6 +244,31 @@ function renderSideCart() {
   }
   els.sideCart.append(list);
   renderSideTotal(items);
+}
+
+async function renderMandate() {
+  const box = document.querySelector("#side-mandate");
+  if (!box) return;
+  let mandate = null;
+  try {
+    const response = await fetch("/api/mandate");
+    if (response.ok) mandate = await response.json();
+  } catch {
+    /* The server is down; the chat shows its own error. */
+  }
+  if (!mandate) return;
+  const caps = Object.entries(mandate.caps || {})
+    .sort(([a], [b]) => (b === "HKD") - (a === "HKD"))
+    .map(([code, cap]) => HackuMoney.text(cap, code));
+  const end = mandate.expires ? new Date(mandate.expires) : null;
+  const until = end && !Number.isNaN(end.getTime()) ? `${end.getMonth() + 1}月${end.getDate()}日` : "";
+  box.className = `side-mandate ${mandate.valid ? "ok" : "missing"}`;
+  box.replaceChildren(
+    ...(mandate.valid
+      ? [h("strong", {}, "已授權助理付款"), `每筆上限 ${caps.join("、")}${until ? `，到 ${until}` : ""}。按這裡修改。`]
+      : [h("strong", {}, "還沒有付款授權"), "簽好授權，助理才能幫你下單。按這裡簽署。"])
+  );
+  box.hidden = false;
 }
 
 function renderSideTotal(items) {
@@ -610,6 +641,7 @@ function productCard(product, best) {
     type: "button",
     class: startQty ? "add-cart added" : "add-cart",
     "aria-label": "加入購物車",
+    title: "加入購物車",
   }, cartIcon());
   const qtyBtn = h("button", {
     type: "button",
@@ -645,7 +677,9 @@ function productCard(product, best) {
     event.stopPropagation();
     editQty(product, qtyBtn, paintQty);
   });
-  return h("div", { class: "card-wrap" }, card, h("div", { class: "cart-controls" }, add, qtyBtn));
+  const wrap = h("div", { class: "card-wrap" }, card, h("div", { class: "cart-controls" }, add, qtyBtn));
+  cardPainters.add({ node: wrap, product, paint: (n) => qtyBtn.isConnected && paintQty(n) });
+  return wrap;
 }
 
 function editQty(product, qtyBtn, paintQty) {
@@ -771,9 +805,11 @@ function orderCard(order) {
     h(
       "p",
       { class: "receipt-line" },
-      `${order.card} · 授權每筆上限 ${order.cap != null ? HackuMoney.text(order.cap, order.currency) : "—"} · Stripe 測試模式，沒有扣真錢`
+      `授權每筆上限 ${order.cap != null ? HackuMoney.text(order.cap, order.currency) : "—"} · ${
+        order.live ? "真實付款，會向商店下單並送到你填的地址" : "Stripe 測試模式，沒有扣真錢"
+      }`
     ),
-    message,
+    order.session ? h("p", { class: "receipt-line order-message" }, "付款頁已開啟。付好後會回到這裡。") : message,
     h("div", { class: "order-actions" }, pay, cancel)
   );
 
@@ -784,9 +820,9 @@ function orderCard(order) {
   };
   pay.addEventListener("click", async () => {
     pay.disabled = cancel.disabled = true;
-    pay.textContent = "付款中…";
+    pay.textContent = "檢查中…";
     message.hidden = false;
-    message.textContent = "正在驗證商品並扣款，通常要 10 到 30 秒。";
+    message.textContent = "正在驗證商品，通常要 10 到 30 秒，之後會打開 Stripe 付款頁。";
     let response;
     let data = {};
     try {
@@ -805,10 +841,14 @@ function orderCard(order) {
       message.textContent = response ? data.error || "付款服務發生錯誤，請再按一次。" : "連不上伺服器，請再按一次。";
       return;
     }
-    order.result = response.ok
-      ? { kind: "receipt", paid: true, amount: data.amount, currency: data.currency, card: data.card, hash: data.hash, items: data.items }
-      : { kind: "receipt", paid: false, reason: data.error || "付款被拒絕。" };
-    settle();
+    if (!response.ok || !data.url) {
+      order.result = { kind: "receipt", paid: false, reason: data.error || "付款被拒絕。" };
+      settle();
+      return;
+    }
+    order.session = data.id;
+    saveChat();
+    window.location.assign(data.url);
   });
   cancel.addEventListener("click", () => {
     order.canceled = true;
@@ -823,8 +863,8 @@ function syncOrders() {
     for (const entry of item._receipts || []) {
       if (entry.kind !== "order" || !entry.call) continue;
       if (entry.result?.paid) {
-        const { amount, currency, hash } = entry.result;
-        outcomes.set(entry.call, { paid: true, amount, currency, record: (hash || "").slice(0, 12) });
+        const { amount, currency, hash, live, ship_to } = entry.result;
+        outcomes.set(entry.call, { paid: true, amount, currency, live: Boolean(live), ship_to, record: (hash || "").slice(0, 12) });
       } else if (entry.result) outcomes.set(entry.call, { refused: entry.result.reason });
       else if (entry.canceled) outcomes.set(entry.call, { canceled: true });
     }
@@ -859,9 +899,37 @@ function receiptCard(receipt) {
     { class: "receipt paid" },
     h("p", { class: "receipt-title" }, `已付款 ${HackuMoney.text(receipt.amount, receipt.currency)}`),
     h("ul", { class: "receipt-items" }, items),
-    h("p", { class: "receipt-line" }, `${receipt.card} · Stripe 測試模式，沒有扣真錢`),
-    receipt.hash ? h("p", { class: "receipt-line mono" }, `紀錄 ${receipt.hash.slice(0, 12)}`) : null
+    receipt.ship_to ? h("p", { class: "receipt-line" }, `送到：${receipt.ship_to}`) : null,
+    h("p", { class: "receipt-line" }, receipt.live ? "真實付款。接著會向商店下單，下單後會有商店訂單編號。" : "Stripe 測試模式，沒有扣真錢，也不會向商店下單。"),
+    receipt.hash ? h("p", { class: "receipt-line mono" }, `紀錄 ${receipt.hash.slice(0, 12)}`) : null,
+    h("a", { class: "receipt-link", href: "orders.html" }, receipt.live ? "查看代購進度 ↗" : "到代購訂單看這筆 ↗")
   );
+}
+
+async function finishStripeReturn() {
+  const params = new URLSearchParams(window.location.search);
+  const session = params.get("paid");
+  if (!session && !params.has("canceled")) return;
+  history.replaceState(null, "", window.location.pathname);
+  const orders = [...els.list.children].flatMap((item) => item._receipts || []).filter((entry) => entry.kind === "order");
+  const order = session ? orders.find((entry) => entry.session === session) : orders.filter((entry) => entry.session && !entry.result).pop();
+  if (!order) return;
+  if (session) {
+    try {
+      const response = await fetch(`/api/checkout/status?session=${encodeURIComponent(session)}`);
+      const data = await response.json();
+      if (response.ok && data.paid) {
+        order.result = { kind: "receipt", paid: true, amount: data.amount, currency: data.currency, hash: data.hash, items: data.items, ship_to: data.ship_to, live: data.live };
+      }
+    } catch {
+      /* Stripe status is read again on the next return. */
+    }
+  }
+  if (!order.result) delete order.session;
+  syncOrders();
+  saveChat();
+  restoreChat();
+  scrollToEnd(true);
 }
 
 function askCard(questions) {
@@ -1064,3 +1132,4 @@ function scrollToEnd(force = false) {
 restoreChat();
 saveChat();
 renderChatList();
+finishStripeReturn();

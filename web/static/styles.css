@@ -56,15 +56,31 @@ button {
 }
 
 .side h2 {
-  margin: 0;
-  font-size: 15px;
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 12px;
   font-weight: 650;
+  letter-spacing: 0.04em;
+}
+
+.brand .sub {
+  margin-top: 6px;
+  line-height: 1.45;
+}
+
+.side-cart-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 !important;
+  color: var(--ink) !important;
+  font-size: 16px !important;
+  letter-spacing: 0 !important;
 }
 
 .cart-mark {
-  width: 36px;
-  height: 36px;
-  margin: 0;
+  width: 32px;
+  height: 32px;
   display: grid;
   place-items: center;
   border-radius: 999px;
@@ -73,8 +89,58 @@ button {
 }
 
 .cart-mark svg {
-  width: 18px;
-  height: 18px;
+  width: 16px;
+  height: 16px;
+}
+
+.side-links {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+
+.side-links a {
+  padding: 6px 8px;
+  border-radius: 8px;
+  color: var(--ink);
+  font-size: 13px;
+  text-decoration: none;
+}
+
+.side-links a:hover {
+  background: #fff;
+}
+
+.side-mandate {
+  display: block;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #fff;
+  color: var(--ink);
+  font-size: 12.5px;
+  line-height: 1.45;
+  text-decoration: none;
+}
+
+.side-mandate strong {
+  display: block;
+  font-size: 13px;
+}
+
+.side-mandate.ok strong {
+  color: var(--good);
+}
+
+.side-mandate.missing {
+  border-color: #f0c36d;
+  background: #fff8e8;
+}
+
+.side-mandate.missing strong {
+  color: #8a5a00;
 }
 
 .narrow-title {
@@ -168,7 +234,7 @@ button {
 }
 
 .chat-list,
-.side-cart {
+.side-cart-body {
   flex: 1;
   min-height: 0;
   margin: 0;
@@ -238,6 +304,10 @@ button {
   margin: 0 0 18px;
   padding-top: 12px;
   border-top: 1px solid var(--line);
+}
+
+.side-total:empty {
+  display: none;
 }
 
 .side-total {
@@ -330,6 +400,13 @@ button {
   background: var(--panel);
   border-left: 1px solid var(--line);
   border-right: 1px solid var(--line);
+}
+
+body > .chat {
+  max-width: 860px;
+  min-height: 100%;
+  height: auto;
+  margin: 0 auto;
 }
 
 .chat-header {
@@ -903,7 +980,7 @@ a.card:hover {
 }
 
 @media (min-width: 901px) {
-  .header-actions {
+  .app .chat-header {
     display: none;
   }
 }

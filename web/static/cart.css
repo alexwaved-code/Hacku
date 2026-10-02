@@ -120,10 +120,18 @@
   color: #991b1b;
 }
 
-.test-note {
-  margin: 4px 0 0;
+.mode-note {
+  margin: 0 0 16px;
   color: var(--muted);
   font-size: 13px;
+}
+
+.mode-note.live {
+  padding: 10px 12px;
+  border: 1px solid #f0c36d;
+  border-radius: 12px;
+  background: #fff8e6;
+  color: #7a4b00;
 }
 
 .empty {
@@ -166,28 +174,8 @@
   font: inherit;
 }
 
-.wallet {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  margin-bottom: 20px;
-  padding: 12px 14px;
-  border: 1px solid var(--line);
-  border-radius: 14px;
-  background: var(--panel);
-}
-
-.wallet:empty,
 .orders:empty {
   display: none;
-}
-
-.wallet-line {
-  flex: 1 1 260px;
-  margin: 0;
-  font-size: 14px;
 }
 
 .orders {

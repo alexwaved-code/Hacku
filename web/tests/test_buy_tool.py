@@ -24,8 +24,8 @@ def quoted(items):
         "ok": True,
         "total": 69.0,
         "currency": "HKD",
-        "card": "Visa •••• 4242",
         "cap": 100,
+        "live": False,
         "items": [{"name": "MOMAX 60W cable", "store": "HKTVmall", "qty": 1, "price": 69.0}],
     }
 

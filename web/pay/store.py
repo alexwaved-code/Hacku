@@ -9,6 +9,15 @@ from contextlib import contextmanager
 import config
 
 GENESIS = "0" * 64
+ORDER_COLUMNS = {
+    "via": "TEXT NOT NULL DEFAULT 'cart'",
+    "live": "INTEGER NOT NULL DEFAULT 0",
+    "payment": "TEXT",
+    "shipping": "TEXT",
+    "fulfil": "TEXT NOT NULL DEFAULT ''",
+    "fulfil_note": "TEXT NOT NULL DEFAULT ''",
+    "store_order": "TEXT NOT NULL DEFAULT ''",
+}
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS mandates (
     id TEXT PRIMARY KEY,
@@ -25,7 +34,13 @@ CREATE TABLE IF NOT EXISTS orders (
     paid INTEGER NOT NULL DEFAULT 0,
     hash TEXT,
     created_at TEXT NOT NULL,
-    via TEXT NOT NULL DEFAULT 'cart'
+    via TEXT NOT NULL DEFAULT 'cart',
+    live INTEGER NOT NULL DEFAULT 0,
+    payment TEXT,
+    shipping TEXT,
+    fulfil TEXT NOT NULL DEFAULT '',
+    fulfil_note TEXT NOT NULL DEFAULT '',
+    store_order TEXT NOT NULL DEFAULT ''
 );
 CREATE TABLE IF NOT EXISTS settings (
     key TEXT PRIMARY KEY,
@@ -52,8 +67,9 @@ def db():
         try:
             conn.executescript(SCHEMA)
             columns = {row["name"] for row in conn.execute("PRAGMA table_info(orders)")}
-            if "via" not in columns:
-                conn.execute("ALTER TABLE orders ADD COLUMN via TEXT NOT NULL DEFAULT 'cart'")
+            for name, kind in ORDER_COLUMNS.items():
+                if name not in columns:
+                    conn.execute(f"ALTER TABLE orders ADD COLUMN {name} {kind}")
             yield conn
             conn.commit()
         finally:
