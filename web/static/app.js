@@ -11,7 +11,13 @@ const els = {
   chatList: $("#chat-list"),
   sideCart: $("#side-cart"),
   toLatest: $("#to-latest"),
+  chatSearch: $("#chat-search"),
+  sideChats: $("#side-chats"),
+  sideCartPanel: $("#side-cart-panel"),
+  openChats: $("#open-chats"),
+  scrim: $(".scrim"),
 };
+const narrowScreen = window.matchMedia("(max-width: 900px)");
 
 const CHAT_KEY = "hacku.chat";
 const CHATS_KEY = "hacku.chats";
@@ -49,6 +55,8 @@ const state = {
 };
 const cardPainters = new Set();
 let cartSeen = null;
+let chatsSeen = null;
+const NUMERALS = { 一: 1, 二: 2, 兩: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9, 十: 10 };
 
 els.form.addEventListener("submit", (event) => {
   event.preventDefault();
@@ -70,8 +78,19 @@ els.list.addEventListener(
 );
 els.toLatest.addEventListener("click", () => els.list.scrollTo({ top: els.list.scrollHeight, behavior: "smooth" }));
 document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && document.body.classList.contains("drawer-open")) {
+    closeDrawers();
+    return;
+  }
   if (event.key === "Escape" && state.busy) {
     state.controller?.abort();
+    return;
+  }
+  if (event.key.toLowerCase() === "k" && (event.metaKey || event.ctrlKey) && els.chatSearch) {
+    event.preventDefault();
+    openDrawer(els.sideChats);
+    els.chatSearch.focus();
+    els.chatSearch.select();
     return;
   }
   const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName || "");
@@ -80,7 +99,35 @@ document.addEventListener("keydown", (event) => {
     els.input.focus();
   }
 });
-els.cartLink?.addEventListener("click", saveChat);
+els.cartLink?.addEventListener("click", (event) => {
+  if (openDrawer(els.sideCartPanel)) event.preventDefault();
+  else saveChat();
+});
+els.openChats?.addEventListener("click", () => openDrawer(els.sideChats));
+els.scrim?.addEventListener("click", closeDrawers);
+document.querySelectorAll("[data-close]").forEach((button) => button.addEventListener("click", closeDrawers));
+narrowScreen.addEventListener("change", closeDrawers);
+els.chatSearch?.addEventListener("input", renderChatList);
+els.chatSearch?.addEventListener("keydown", (event) => {
+  if (event.key === "Escape") {
+    event.stopPropagation();
+    els.chatSearch.value = "";
+    renderChatList();
+    els.chatSearch.blur();
+  } else if (event.key === "Enter") {
+    els.chatList.querySelector(".chat-open")?.click();
+  }
+});
+els.list.addEventListener("mouseover", (event) => linkCard(event.target, true));
+els.list.addEventListener("mouseout", (event) => linkCard(event.target, false));
+els.list.addEventListener("click", (event) => {
+  const card = refCard(event.target);
+  if (!card) return;
+  card.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  card.classList.remove("flash");
+  void card.offsetWidth;
+  card.classList.add("flash");
+});
 window.addEventListener("pagehide", saveChat);
 updateCartCount();
 renderMandate();
@@ -251,60 +298,89 @@ function updateCartCount() {
 function renderSideCart() {
   if (!els.sideCart) return;
   const items = HackuCart.load();
+  const count = items.reduce((n, item) => n + (Number(item.qty) || 1), 0);
   const fresh = cartSeen ? items.filter((item) => !cartSeen.has(item.id)).map((item) => item.id) : [];
-  const grew = cartSeen && items.reduce((n, item) => n + (Number(item.qty) || 1), 0) > cartSeen.count;
+  const grew = cartSeen && count > cartSeen.count;
   cartSeen = new Set(items.map((item) => item.id));
-  cartSeen.count = items.reduce((n, item) => n + (Number(item.qty) || 1), 0);
+  cartSeen.count = count;
+  const badge = document.querySelector("#side-count");
+  if (badge) {
+    badge.hidden = !count;
+    badge.textContent = String(count);
+  }
   if (grew) {
-    const mark = document.querySelector(".cart-mark");
-    mark?.classList.remove("pulse");
-    void mark?.offsetWidth;
-    mark?.classList.add("pulse");
+    for (const node of [document.querySelector(".cart-mark"), badge]) {
+      node?.classList.remove("pulse");
+      void node?.offsetWidth;
+      node?.classList.add("pulse");
+    }
   }
   els.sideCart.replaceChildren();
   if (!items.length) {
-    els.sideCart.append(h("p", { class: "side-empty" }, "還沒有商品。按商品卡右下角的購物車圖示加入，或直接跟助理說「幫我買」。"));
+    els.sideCart.append(
+      h(
+        "div",
+        { class: "cart-empty" },
+        h("span", { class: "cart-empty-icon", "aria-hidden": "true" }, cartIcon()),
+        h("strong", {}, "購物車是空的"),
+        h("p", {}, "在商品卡按購物車圖示，或跟助理說「幫我買第一個」。")
+      )
+    );
     renderSideTotal(items);
     return;
   }
   const list = h("ul", { class: "side-cart-list" });
-  for (const item of items) {
-    const price = HackuMoney.text(item.price, item.currency) || "價格見商店";
-    const picture = item.image
-      ? h("img", { class: "side-cart-pic", src: item.image, alt: "", referrerpolicy: "no-referrer" })
-      : h("span", { class: "side-cart-pic missing", "aria-hidden": "true" });
-    const minus = h("button", { type: "button", class: "qty-btn", "aria-label": "減一個" }, "−");
-    const plus = h("button", { type: "button", class: "qty-btn", "aria-label": "加一個" }, "+");
-    const clear = h("button", { type: "button", class: "qty-btn", "aria-label": "全部移除" }, trashIcon());
-    minus.addEventListener("click", () => {
-      HackuCart.changeQty(item.id, -1);
-      updateCartCount();
-    });
-    plus.addEventListener("click", () => {
-      HackuCart.changeQty(item.id, 1);
-      updateCartCount();
-    });
-    clear.addEventListener("click", () => {
-      HackuCart.remove(item.id);
-      updateCartCount();
-    });
-    list.append(
-      h(
-        "li",
-        { class: fresh.includes(item.id) ? "side-cart-item fresh" : "side-cart-item" },
-        picture,
-        h(
-          "div",
-          {},
-          h("p", { class: "side-cart-name" }, item.name),
-          h("p", { class: "side-cart-meta" }, `${item.store || "商店"} · ${price}`),
-          h("div", { class: "qty-step" }, minus, h("span", { class: "qty-count" }, `x${item.qty || 1}`), plus, clear)
-        )
-      )
-    );
-  }
+  for (const item of items) list.append(sideCartItem(item, fresh.includes(item.id)));
   els.sideCart.append(list);
   renderSideTotal(items);
+}
+
+function sideCartItem(item, fresh) {
+  const qty = Number(item.qty) || 1;
+  const line = item.price == null ? null : Number(item.price) * qty;
+  const picture = item.image
+    ? h("img", { class: "side-cart-pic", src: item.image, alt: "", referrerpolicy: "no-referrer", onerror: hideBrokenImage })
+    : h("span", { class: "side-cart-pic missing", "aria-hidden": "true" });
+  const name = item.url
+    ? h("a", { class: "side-cart-name", href: item.url, target: "_blank", rel: "noopener noreferrer", title: item.name }, item.name)
+    : h("p", { class: "side-cart-name", title: item.name }, item.name);
+  const row = h("li", { class: fresh ? "side-cart-item fresh" : "side-cart-item" });
+  const change = (delta) => {
+    if (qty + delta < 1) {
+      row.classList.add("leaving");
+      setTimeout(() => {
+        HackuCart.remove(item.id);
+        updateCartCount();
+      }, 220);
+      return;
+    }
+    HackuCart.changeQty(item.id, delta);
+    updateCartCount();
+  };
+  const minus = h(
+    "button",
+    { type: "button", class: qty > 1 ? "qty-btn" : "qty-btn qty-remove", "aria-label": qty > 1 ? "減一個" : "移除", title: qty > 1 ? "減一個" : "移除" },
+    qty > 1 ? "−" : trashIcon()
+  );
+  const plus = h("button", { type: "button", class: "qty-btn", "aria-label": "加一個", title: "加一個" }, "+");
+  minus.addEventListener("click", () => change(-1));
+  plus.addEventListener("click", () => change(1));
+  row.append(
+    picture,
+    h(
+      "div",
+      { class: "side-cart-body" },
+      name,
+      h("p", { class: "side-cart-meta" }, item.store || "商店"),
+      h(
+        "div",
+        { class: "side-cart-foot" },
+        h("div", { class: "qty-step" }, minus, h("span", { class: "qty-count" }, String(qty)), plus),
+        h("strong", { class: "side-cart-price" }, line == null ? "價格見商店" : HackuMoney.text(line, item.currency))
+      )
+    )
+  );
+  return row;
 }
 
 async function renderMandate() {
@@ -322,25 +398,43 @@ async function renderMandate() {
     .sort(([a], [b]) => (b === "HKD") - (a === "HKD"))
     .map(([code, cap]) => HackuMoney.text(cap, code));
   const end = mandate.expires ? new Date(mandate.expires) : null;
-  const until = end && !Number.isNaN(end.getTime()) ? `${end.getMonth() + 1}月${end.getDate()}日` : "";
+  const valid = end && !Number.isNaN(end.getTime());
+  const until = valid ? `${end.getMonth() + 1}月${end.getDate()}日` : "";
+  const days = valid ? Math.max(0, Math.ceil((end - Date.now()) / 86400000)) : null;
+  const shield = lineIcon(mandate.valid ? "M12 3l7 3v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10V6l7-3zM9 12l2 2 4-4" : "M12 3l7 3v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10V6l7-3zM12 8v4M12 15.5v.5");
   box.className = `side-mandate ${mandate.valid ? "ok" : "missing"}`;
   box.replaceChildren(
-    ...(mandate.valid
-      ? [h("strong", {}, "已授權助理付款"), `每筆上限 ${caps.join("、")}${until ? `，到 ${until}` : ""}。按這裡修改。`]
-      : [h("strong", {}, "還沒有付款授權"), "簽好授權，助理才能幫你下單。按這裡簽署。"])
+    h("span", { class: "mandate-icon" }, shield),
+    h(
+      "span",
+      { class: "mandate-body" },
+      ...(mandate.valid
+        ? [
+            h("strong", {}, "已授權助理付款"),
+            h("span", {}, `每筆上限 ${caps.join("、")}`),
+            until ? h("span", { class: "mandate-days" }, days > 0 ? `還有 ${days} 天・到 ${until}` : `今天到期`) : null,
+          ]
+        : [h("strong", {}, "還沒有付款授權"), h("span", {}, "簽好授權，助理才能幫你下單。")])
+    ),
+    h("span", { class: "mandate-go", "aria-hidden": "true" }, lineIcon("M9 6l6 6-6 6"))
   );
+  box.title = mandate.valid ? "修改付款授權" : "簽署付款授權";
   box.hidden = false;
 }
 
 function renderSideTotal(items) {
   const total = document.querySelector("#side-total");
-  if (!total) return;
-  const pay = document.querySelector("#side-pay");
-  if (pay) pay.hidden = !items.length;
+  const box = document.querySelector("#side-pay-box");
+  const label = document.querySelector("#side-items");
+  if (!total || !box) return;
+  box.hidden = !items.length;
   if (!items.length) {
     total.textContent = "";
+    total._amount = null;
     return;
   }
+  const count = items.reduce((n, item) => n + (Number(item.qty) || 1), 0);
+  if (label) label.textContent = `${count} 件商品`;
   const sums = new Map();
   let missing = false;
   for (const item of items) {
@@ -351,10 +445,56 @@ function renderSideTotal(items) {
     const code = item.currency || "HKD";
     sums.set(code, (sums.get(code) || 0) + Number(item.price) * (Number(item.qty) || 1));
   }
+  if (sums.size === 1 && !missing) {
+    const [[code, amount]] = [...sums.entries()];
+    countTo(total, amount, code);
+    return;
+  }
+  total._amount = null;
   const parts = [...sums.entries()].map(([code, amount]) => HackuMoney.text(amount, code));
-  total.textContent = parts.length
-    ? `合計 ${parts.join("、")}${missing ? "（部分見商店）" : ""}`
-    : "合計見商店";
+  total.textContent = parts.length ? `${parts.join("、")}${missing ? "＋見商店" : ""}` : "見商店";
+}
+
+function countTo(node, amount, code) {
+  const from = node._code === code && Number.isFinite(node._amount) ? node._amount : null;
+  node._amount = amount;
+  node._code = code;
+  cancelAnimationFrame(node._frame);
+  clearTimeout(node._settle);
+  if (from === null || from === amount || document.hidden || window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    node.textContent = HackuMoney.text(amount, code);
+    return;
+  }
+  node._settle = setTimeout(() => {
+    cancelAnimationFrame(node._frame);
+    node.textContent = HackuMoney.text(amount, code);
+  }, 500);
+  const started = performance.now();
+  const step = (now) => {
+    const t = Math.min(1, (now - started) / 450);
+    const eased = 1 - (1 - t) ** 3;
+    node.textContent = t < 1 ? HackuMoney.text(Math.round(from + (amount - from) * eased), code) : HackuMoney.text(amount, code);
+    if (t < 1) node._frame = requestAnimationFrame(step);
+  };
+  node._frame = requestAnimationFrame(step);
+  node.classList.remove("tick");
+  void node.offsetWidth;
+  node.classList.add("tick");
+}
+
+function openDrawer(panel) {
+  if (!panel || !narrowScreen.matches) return false;
+  closeDrawers();
+  panel.classList.add("open");
+  els.scrim.hidden = false;
+  document.body.classList.add("drawer-open");
+  return true;
+}
+
+function closeDrawers() {
+  document.querySelectorAll(".side.open").forEach((panel) => panel.classList.remove("open"));
+  if (els.scrim) els.scrim.hidden = true;
+  document.body.classList.remove("drawer-open");
 }
 
 function setBusy(busy) {
@@ -395,6 +535,7 @@ function resetChat() {
   sessionStorage.removeItem(CHAT_KEY);
   els.list.replaceChildren(welcomeItem());
   renderChatList();
+  closeDrawers();
   els.input.focus();
 }
 
@@ -416,37 +557,108 @@ function loadChats() {
   }
 }
 
+function chatGroup(chat) {
+  if (chat.pinned) return "釘選";
+  const day = (time) => new Date(time).setHours(0, 0, 0, 0);
+  const diff = Math.round((day(Date.now()) - day(chat.updated || 0)) / 86400000);
+  if (diff <= 0) return "今天";
+  if (diff === 1) return "昨天";
+  if (diff < 7) return "過去 7 天";
+  return "更早";
+}
+
 function renderChatList() {
   if (!els.chatList) return;
-  const chats = loadChats()
+  const query = (els.chatSearch?.value || "").trim().toLowerCase();
+  const all = loadChats()
     .slice()
     .sort((a, b) => Number(!!b.pinned) - Number(!!a.pinned) || (b.updated || 0) - (a.updated || 0));
+  const chats = query ? all.filter((chat) => (chat.title || "").toLowerCase().includes(query)) : all;
+  const firstPaint = chatsSeen === null;
+  const seen = chatsSeen || new Set();
+  chatsSeen = new Set(all.map((chat) => chat.id));
   els.chatList.replaceChildren();
   if (!chats.length) {
-    els.chatList.append(h("li", { class: "side-empty" }, "還沒有對話。"));
+    els.chatList.append(
+      h("li", { class: "chat-empty" }, query ? `找不到「${els.chatSearch.value.trim()}」。` : "還沒有對話。問第一個問題後，會出現在這裡。")
+    );
     return;
   }
   const current = currentChatId();
-  for (const chat of chats) {
-    const button = h("button", { type: "button", class: "chat-open" }, chat.title || "對話");
-    button.addEventListener("click", () => openChat(chat.id));
-    const rename = h("button", { type: "button", class: "icon-btn", "aria-label": "重新命名" }, pencilIcon());
-    rename.addEventListener("click", (event) => {
+  let group = "";
+  chats.forEach((chat, index) => {
+    const name = chatGroup(chat);
+    if (name !== group) {
+      group = name;
+      els.chatList.append(h("li", { class: "chat-group" }, name));
+    }
+    const row = chatRow(chat, chat.id === current);
+    if (firstPaint) {
+      row.classList.add("enter");
+      row.style.setProperty("--i", Math.min(index, 10));
+    } else if (!seen.has(chat.id)) {
+      row.classList.add("enter");
+    }
+    els.chatList.append(row);
+  });
+}
+
+function chatRow(chat, current) {
+  const button = h(
+    "button",
+    { type: "button", class: "chat-open", title: chat.title || "對話" },
+    h("span", { class: "chat-title" }, chat.title || "對話")
+  );
+  button.addEventListener("click", () => openChat(chat.id));
+  const tool = (label, icon, onClick, extra = "") =>
+    h("button", { type: "button", class: `chat-tool ${extra}`.trim(), "aria-label": label, title: label, onclick: (event) => {
       event.stopPropagation();
-      startRename(chat.id, button);
-    });
-    const pin = h(
-      "button",
-      { type: "button", class: chat.pinned ? "icon-btn pinned" : "icon-btn", "aria-label": chat.pinned ? "取消釘選" : "釘選" },
-      pinIcon()
-    );
-    pin.addEventListener("click", (event) => {
-      event.stopPropagation();
-      togglePin(chat.id);
-    });
-    const bar = h("div", { class: chat.id === current ? "chat-bar current" : "chat-bar" }, button, rename, pin);
-    els.chatList.append(h("li", { class: "chat-row", "data-id": chat.id }, bar));
+      onClick();
+    } }, icon);
+  const bar = h(
+    "div",
+    { class: current ? "chat-bar current" : "chat-bar" },
+    button,
+    h(
+      "div",
+      { class: "chat-tools" },
+      tool("重新命名", pencilIcon(), () => startRename(chat.id, button)),
+      tool(chat.pinned ? "取消釘選" : "釘選", pinIcon(), () => togglePin(chat.id), chat.pinned ? "pinned" : ""),
+      tool("刪除", trashIcon(), () => confirmDelete(chat.id, bar))
+    )
+  );
+  return h("li", { class: "chat-row", "data-id": chat.id }, bar);
+}
+
+function confirmDelete(id, bar) {
+  const keep = () => renderChatList();
+  const yes = h("button", { type: "button", class: "chat-confirm-yes" }, "刪除");
+  const no = h("button", { type: "button", class: "chat-confirm-no" }, "取消");
+  yes.addEventListener("click", (event) => {
+    event.stopPropagation();
+    const row = bar.closest(".chat-row");
+    row?.classList.add("leaving");
+    setTimeout(() => deleteChat(id), 200);
+  });
+  no.addEventListener("click", (event) => {
+    event.stopPropagation();
+    keep();
+  });
+  bar.classList.add("confirm");
+  bar.replaceChildren(h("span", { class: "chat-confirm-text" }, "刪除這個對話？"), yes, no);
+  no.focus();
+}
+
+function deleteChat(id) {
+  localStorage.setItem(CHATS_KEY, JSON.stringify(loadChats().filter((chat) => chat.id !== id)));
+  if (id === currentChatId()) {
+    state.controller?.abort();
+    state.thread = [];
+    sessionStorage.removeItem(CHAT_KEY);
+    sessionStorage.setItem(CURRENT_KEY, crypto.randomUUID());
+    restoreChat();
   }
+  renderChatList();
 }
 
 function startRename(id, button) {
@@ -486,6 +698,7 @@ function togglePin(id) {
 }
 
 function openChat(id) {
+  closeDrawers();
   if (id === currentChatId()) return;
   saveChat();
   const chat = loadChats().find((item) => item.id === id);
@@ -595,6 +808,8 @@ function appendSavedAgent(entry) {
   item._markdown = entry.text || "";
   item._products = products;
   item._receipts = receipts;
+  numberCards(cards);
+  markPick(item, entry.text);
   els.list.append(item);
 }
 
@@ -669,6 +884,7 @@ function createTurn() {
           return card;
         })
       );
+      numberCards(cards);
     },
     stepDone(event) {
       activity.toolDone(event);
@@ -699,6 +915,7 @@ function createTurn() {
       item._markdown = typer.text();
       typing.remove();
       clearSkeleton();
+      markPick(item, item._markdown);
       activity.finish("完成");
       item.querySelector(".ask button")?.focus({ preventScroll: true });
     },
@@ -1368,7 +1585,62 @@ function renderMarkdown(source) {
 function inline(text) {
   return escapeHtml(text)
     .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
-    .replace(/\[([^\]]+)\]\((https:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
+    .replace(/\[([^\]]+)\]\((https:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>')
+    .replace(/(?:HK|NT|US|S|A)\$\s?\d[\d,]*(?:\.\d+)?|(?:人民幣\s?)?[¥￥]\s?\d[\d,]*(?:\.\d+)?/g, '<b class="money">$&</b>')
+    .replace(/第\s*([一二兩三四五六七八九十]|\d{1,2})\s*(?:個|款|件|張|項)/g, (match, n) => {
+      const index = NUMERALS[n] || Number(n);
+      return index ? `<span class="ref" data-n="${index}">${match}</span>` : match;
+    });
+}
+
+function refCard(target) {
+  const ref = target instanceof Element ? target.closest(".ref") : null;
+  if (!ref) return null;
+  return ref.closest(".turn")?.querySelectorAll(".cards > .card-wrap:not(.skeleton)")[Number(ref.dataset.n) - 1] || null;
+}
+
+function linkCard(target, on) {
+  const card = refCard(target);
+  if (card) card.classList.toggle("linked", on);
+}
+
+function numberCards(cards) {
+  cards.querySelectorAll(":scope > .card-wrap:not(.skeleton)").forEach((wrap, index) => {
+    if (!wrap.querySelector(".card-num")) wrap.append(h("span", { class: "card-num", "aria-hidden": "true" }, String(index + 1)));
+  });
+}
+
+function pickIndex(markdown, products) {
+  const text = markdown || "";
+  const byNumber = /(?:最推薦|推薦|首選|最適合|建議選|建議買)[^。！？\n]{0,6}?第\s*([一二兩三四五六七八九十]|\d{1,2})\s*(?:個|款|件)/.exec(text);
+  if (byNumber) return (NUMERALS[byNumber[1]] || Number(byNumber[1])) - 1;
+  const sentence = text.split(/[。！？\n]/).find((part) => /最推薦|推薦|首選|最適合|建議/.test(part));
+  if (!sentence) return -1;
+  const said = sentence.toLowerCase();
+  let best = -1;
+  let bestScore = 0;
+  let tie = false;
+  (products || []).forEach((product, index) => {
+    const words = String(product.name || "").toLowerCase().match(/[a-z0-9][a-z0-9-]{2,}/g) || [];
+    const score = new Set(words.filter((word) => said.includes(word))).size;
+    if (score > bestScore) {
+      best = index;
+      bestScore = score;
+      tie = false;
+    } else if (score && score === bestScore) {
+      tie = true;
+    }
+  });
+  return tie ? -1 : best;
+}
+
+function markPick(item, markdown) {
+  const index = pickIndex(markdown, item._products);
+  if (index < 0) return;
+  const wrap = item.querySelectorAll(".cards > .card-wrap:not(.skeleton)")[index];
+  if (!wrap || wrap.classList.contains("picked")) return;
+  wrap.classList.add("picked");
+  wrap.append(h("span", { class: "pick-badge" }, "推薦"));
 }
 
 function escapeHtml(text) {

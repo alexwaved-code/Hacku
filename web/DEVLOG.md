@@ -222,3 +222,13 @@ New chat page look, with a logo and something new on screen every second while t
 - Static files are sent with `Cache-Control: no-cache`. Before, the browser could keep an old `app.js` after an update.
 - Opening a saved chat clears the previous chat's open question.
 - Checked in the browser at 1024 px and at 390 px: welcome, live panel at 10 s with five cards, folded panel with follow-ups, a question card on the phone, add to cart. 46 unit tests.
+
+## 2026-10-03 01:08
+
+Side panels rebuilt, and the answer now points at its cards.
+
+- Left panel: a full-width 新對話 button, a search box (Cmd/Ctrl+K), and chats grouped by 釘選, 今天, 昨天, 過去 7 天, 更早. Rename, pin, and delete show only when you point at a chat, so the list stays plain. Delete asks 「刪除這個對話？」 once. The current chat has a white row with a dark bar on the left.
+- Right panel: a 購物車 title with a count badge, a payment authorization card that shows the caps and the days left, cart rows with a 56 px picture, a two-line name linking to the store, and a pill stepper whose minus becomes a trash icon at 1. The checkout box shows the item count, a total that counts up when it changes, a full-width 去結帳, and 「Stripe 安全付款，付款前會再確認」. The empty cart shows a floating cart icon and one line on how to add.
+- Below 900 px the panels were hidden. They are now drawers: the menu button opens the chats, and 購物車 opens the cart. Esc or a tap outside closes them.
+- Cards carry numbers 1 to 5. 「第N個」 in the answer is highlighted and lifts or scrolls to that card. Prices in the answer are bold. The card the answer recommends gets a 「推薦」 badge: by 「推薦第N個」, or else by the product name in the recommending sentence, and only when one card matches best.
+- Checked in the browser at 1024 px and 390 px: both drawers, search, delete then cancel, quantity up and remove, the total, and a live search turn where 「首選 Sony SRS-XB100」 marked card 1. 46 unit tests.

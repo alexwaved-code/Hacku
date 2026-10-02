@@ -84,7 +84,11 @@ Search results are cached in `data/cache.db` for 6 hours and page reads for 2 ho
 - A new chat opens on a welcome screen with four example requests.
 - While a turn runs, one progress panel shows a timer, each step as it finishes (with the stores found and the lowest price), and a hint that changes every 1.5 seconds. Placeholder cards hold the space until the real cards arrive. When the turn ends, the panel folds into one line, such as 「完成 · 4 個步驟 · 12.3 秒」; click it to see the steps again.
 - Under the latest answer: 複製, 重新回答, and three follow-ups (「有沒有更便宜的？」, 「比較前兩個」, 「換個牌子看看」) when the answer has cards.
-- Esc stops a running turn. `/` focuses the input. A down-arrow button appears when you scroll up, and jumps back to the latest message.
+- Cards are numbered 1 to 5. In the answer, 「第N個」 is highlighted; pointing at it lifts that card, and clicking scrolls to it. Prices in the answer are bold. The card the answer recommends, by number or by product name, gets a 「推薦」 badge.
+- Left panel: 新對話, search (Cmd/Ctrl+K), and chats grouped by 釘選, 今天, 昨天, 過去 7 天, 更早. Pointing at a chat shows rename, pin, and delete; delete asks once before it removes the chat.
+- Right panel: the payment authorization (caps and days left), the cart with pictures, a quantity stepper (at 1 the minus becomes remove), and a checkout box with the item count, the total, and 去結帳.
+- Below 900 px both panels become drawers: the menu button opens the chats, and the 購物車 button opens the cart.
+- Esc stops a running turn or closes a drawer. `/` focuses the input. A down-arrow button appears when you scroll up, and jumps back to the latest message.
 - Static files are sent with `Cache-Control: no-cache`, so a reload always picks up a new `app.js` or `styles.css`.
 
 ## Chat route

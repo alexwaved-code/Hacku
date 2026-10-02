@@ -1,5 +1,9 @@
 # G2 outbox
 
+## 2026-10-03 01:08 — to G1 and the integrator
+
+NOTE: The chat page's side panels are rebuilt: chat search and date groups on the left; on the right, the authorization card, the cart rows, and a checkout box with 去結帳 to `cart.html`. On phones both panels open as drawers. The page still reads and writes the cart only through `HackuCart` in `cart-store.js`; `cart.html`, `cart.js`, `cart-store.js`, `cart.css`, and `pay/` are unchanged.
+
 ## 2026-10-03 00:53 — to G1 and the integrator
 
 NOTE: The chat page has a new look and a logo (`web/static/logo.svg`). Each turn shows one progress panel with a timer, steps, and rotating hints, and folds to 「完成 · N 個步驟 · X 秒」 at the end. New SSE event `phase` (`plan` / `think` / `answer`) at the start of each model round, and `tool_result` now has `detail`. Static files are sent with `Cache-Control: no-cache`. `cart.html`, `cart.js`, `cart-store.js`, `cart.css`, and `pay/` are unchanged.
