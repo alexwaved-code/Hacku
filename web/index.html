@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Shopping agent</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="chat">
+      <header class="chat-header">
+        <h1>Shopping agent</h1>
+      </header>
+      <ol id="messages" class="messages" aria-live="polite"></ol>
+      <form id="composer" class="composer">
+        <label class="sr-only" for="message">Message</label>
+        <input
+          id="message"
+          name="message"
+          type="text"
+          autocomplete="off"
+          placeholder="Message"
+          required
+        />
+        <button type="submit">Send</button>
+      </form>
+    </main>
+    <script src="app.js"></script>
+  </body>
+</html>
