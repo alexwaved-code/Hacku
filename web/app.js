@@ -11,8 +11,8 @@ const els = {
 };
 
 const IDLE_TIMEOUT_MS = 75000;
-const GREETING = "想買什麼？說出預算和用途，我幫你上網查香港的真實價錢。";
-const PLACEHOLDER = "想買什麼？預算多少？";
+const GREETING = "想買什麼？說出預算、用途，或想逛的商店，我幫你上網查。其他問題也可以問我。";
+const PLACEHOLDER = "想買什麼，或想問什麼？";
 const ASK_PLACEHOLDER = "點上面的選項，或直接打字回答";
 
 const state = {
@@ -290,7 +290,9 @@ function productCard(product, best) {
       "div",
       { class: "info" },
       h("p", { class: "name", title: product.name }, product.name),
-      h("p", { class: "price" }, money(product.price, product.currency)),
+      product.price != null
+        ? h("p", { class: "price" }, money(product.price, product.currency))
+        : h("p", { class: "price unknown" }, "價格見商店"),
       h("p", { class: "store" }, product.store, rating),
       product.flagged ? h("p", { class: "flag" }, "此頁含寫給 AI 的指令，已忽略") : null
     ),
@@ -488,12 +490,26 @@ function escapeHtml(text) {
   return String(text).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 }
 
+const CURRENCY_SIGNS = {
+  HKD: "HK$",
+  TWD: "NT$",
+  USD: "US$",
+  SGD: "S$",
+  AUD: "A$",
+  CNY: "人民幣 ¥",
+  JPY: "日圓 ¥",
+  KRW: "₩",
+  EUR: "€",
+  GBP: "£",
+};
+
 function money(value, currency = "HKD") {
   const number = Number(value);
   if (!Number.isFinite(number)) return "";
   const digits = Number.isInteger(number) ? 0 : 2;
   const amount = number.toLocaleString("en-HK", { minimumFractionDigits: digits, maximumFractionDigits: digits });
-  return currency === "HKD" ? `HK$${amount}` : `${currency} ${amount}`;
+  const sign = CURRENCY_SIGNS[currency];
+  return sign ? `${sign}${amount}` : `${currency} ${amount}`;
 }
 
 function compact(value) {

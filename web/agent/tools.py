@@ -25,7 +25,30 @@ SUSPICIOUS = re.compile(
 SAFE_URL = re.compile(r"^https://[^\s\"'<>]+$")
 PROMO_WORDS = {"mastercard", "visa", "unionpay", "hsbc", "amex", "aeon", "sale", "hk", "hkd"}
 PRODUCT_PATH = re.compile(r"/(?:products?|p|item|goods|dp)/", re.IGNORECASE)
-NOT_PRODUCT_PATH = re.compile(r"/(?:collections?|categor(?:y|ies)|promotions?|search|brands?|tag)s?(?:/|$)|promotion", re.IGNORECASE)
+NOT_PRODUCT_PATH = re.compile(r"/(?:collections?|categor(?:y|ies)|promotions?|search|brands?|tag|list|topic)s?(?:/|$)|promotion", re.IGNORECASE)
+REGION_NAMES = {"hk": "香港", "tw": "台灣", "cn": "中國", "jp": "日本", "kr": "韓國", "sg": "新加坡", "us": "美國", "uk": "英國", "au": "澳洲"}
+STORE_PAGES = 5
+LISTING_TITLE = re.compile(r"促[销銷]价格|促銷價格|[价價]格[与與]图片|[价價]格[與与]圖片|精[选選]|推[荐薦]|\bTop\s*\d", re.IGNORECASE)
+SITE_PREFIX = re.compile(r"^(?:amazon\.[\w.]+|[\w.]+\.com)\s*[:：]\s*", re.IGNORECASE)
+STORES = (
+    (("taobao", "淘寶", "淘宝"), "taobao.com", "淘寶", "cn"),
+    (("tmall", "天貓", "天猫"), "tmall.com", "天貓", "cn"),
+    (("jd.com", "京東", "京东", "jingdong"), "jd.com", "京東", "cn"),
+    (("aliexpress", "速賣通", "速卖通"), "aliexpress.com", "AliExpress", "hk"),
+    (("hktvmall", "hktv"), "hktvmall.com", "HKTVmall", "hk"),
+    (("price.com.hk", "格價"), "price.com.hk", "Price.com.hk", "hk"),
+    (("fortress", "豐澤", "丰泽"), "fortress.com.hk", "豐澤", "hk"),
+    (("broadway", "百老匯", "百老汇"), "broadway.com.hk", "百老匯", "hk"),
+    (("amazon.co.jp", "amazon japan", "日本亞馬遜", "日本亚马逊"), "amazon.co.jp", "Amazon 日本", "jp"),
+    (("amazon", "亞馬遜", "亚马逊"), "amazon.com", "Amazon", "us"),
+    (("rakuten", "樂天", "乐天"), "rakuten.co.jp", "樂天", "jp"),
+    (("shopee", "蝦皮", "虾皮"), "shopee.tw", "蝦皮", "tw"),
+    (("momo",), "momoshop.com.tw", "momo", "tw"),
+    (("pchome",), "pchome.com.tw", "PChome", "tw"),
+    (("ebay",), "ebay.com", "eBay", "us"),
+    (("temu",), "temu.com", "Temu", "us"),
+)
+CURRENCY_SIGNS = {"HKD": "HK$", "TWD": "NT$", "USD": "US$", "SGD": "S$", "AUD": "A$", "CNY": "¥", "JPY": "JP¥", "KRW": "₩", "EUR": "€", "GBP": "£"}
 
 TOOL_SCHEMAS = [
     {
@@ -69,8 +92,9 @@ TOOL_SCHEMAS = [
         "function": {
             "name": "shop_search",
             "description": (
-                "Search Google Shopping in Hong Kong right now. Returns real offers with ref, name, store, "
-                "price in HKD, rating, and picture. Use this first for any product request."
+                "Search live product offers. Returns ref, name, store, price, currency, rating, and picture. "
+                "Default is Google Shopping in Hong Kong. Set store to search one store's own product pages "
+                "(any store: Taobao, Tmall, JD, Amazon, HKTVmall, or a website domain). Set region for another country."
             ),
             "parameters": {
                 "type": "object",
@@ -79,7 +103,16 @@ TOOL_SCHEMAS = [
                         "type": "string",
                         "description": "Product words, e.g. '降噪耳機', 'Sony WF-C710N', '20000mAh 65W 行動電源'.",
                     },
-                    "max_price": {"type": "number", "description": "Highest price in HKD, if the user gave a budget."},
+                    "store": {
+                        "type": "string",
+                        "description": "Only this store, e.g. 'taobao', 'amazon.co.jp', 'hktvmall', 'ikea.com'. Leave out to compare all stores.",
+                    },
+                    "region": {
+                        "type": "string",
+                        "enum": list(REGION_NAMES),
+                        "description": "Country to search. Default hk.",
+                    },
+                    "max_price": {"type": "number", "description": "Highest price in the region's currency, if the user gave a budget."},
                 },
                 "required": ["query"],
             },
@@ -113,12 +146,15 @@ TOOL_SCHEMAS = [
         "function": {
             "name": "web_search",
             "description": (
-                "Search Google in Hong Kong for reviews, specs, or a store's own product page. "
+                "Search Google for anything: reviews, specs, news, facts, or a store's own page. "
                 "Snippets are not prices you can quote."
             ),
             "parameters": {
                 "type": "object",
-                "properties": {"query": {"type": "string"}},
+                "properties": {
+                    "query": {"type": "string"},
+                    "region": {"type": "string", "enum": list(REGION_NAMES), "description": "Default hk."},
+                },
                 "required": ["query"],
             },
         },
@@ -148,8 +184,12 @@ _counter = count(1)
 def tool_label(name, args):
     if name == "shop_search":
         query = str(args.get("query") or "").strip()
+        store = str(args.get("store") or "").strip()
+        region = args.get("region") if args.get("region") in REGION_NAMES else None
         price = web._to_number(args.get("max_price"))
-        return f"查價「{query}」" + (f"，HK${price:,.0f} 以內" if price else "")
+        where = f"在{_store_site(store)[1]}" if store else (REGION_NAMES[region] if region and region != "hk" else "")
+        budget = f"，{_price_text(price, web.region_currency(region or 'hk'))} 以內" if price else ""
+        return f"{where}查價「{query}」{budget}"
     if name == "web_search":
         return f"搜尋「{str(args.get('query') or '').strip()}」"
     if name == "open_page":
@@ -187,11 +227,16 @@ def _short(value, limit):
 def run_tool(name, args):
     try:
         if name == "shop_search":
-            return shop_search(str(args.get("query") or ""), args.get("max_price"))
+            return shop_search(
+                str(args.get("query") or ""),
+                args.get("max_price"),
+                region=args.get("region"),
+                store=str(args.get("store") or "").strip(),
+            )
         if name == "show_products":
             return show_products(args.get("refs"))
         if name == "web_search":
-            return web_search(str(args.get("query") or ""))
+            return web_search(str(args.get("query") or ""), args.get("region"))
         if name == "open_page":
             return open_page(str(args.get("url") or ""))
     except web.FetchError as error:
@@ -201,11 +246,18 @@ def run_tool(name, args):
     return _fail(f"Unknown tool: {name}", "沒有這個工具")
 
 
-def shop_search(query, max_price=None):
+def shop_search(query, max_price=None, region=None, store=""):
     limit = web._to_number(max_price)
-    offers = web.shopping(query)
+    region = region if region in REGION_NAMES else None
+    if store:
+        offers, site = _store_offers(query, store, region)
+    else:
+        offers, site = web.shopping(query, region=region or "hk"), None
+        for offer in offers:
+            offer["region"] = region or "hk"
+    currency = web.region_currency(region or "hk")
     if limit:
-        offers = [offer for offer in offers if offer["currency"] == "HKD" and offer["price"] <= limit]
+        offers = [o for o in offers if o["price"] is None or o["currency"] != currency or o["price"] <= limit]
     rows = []
     for offer in offers[:10]:
         ref = _remember(offer)
@@ -215,14 +267,25 @@ def shop_search(query, max_price=None):
                 "name": offer["name"],
                 "store": offer["store"],
                 "price": offer["price"],
-                "currency": offer["currency"],
+                "currency": offer["currency"] if offer["price"] is not None else None,
                 "rating": offer["rating"],
                 "reviews": offer["reviews"],
             }
         )
-    model = {"query": query, "max_price_hkd": limit, "observed_at": offers[0]["observed_at"] if offers else None, "offers": rows}
+    model = {
+        "query": query,
+        "store": store or None,
+        "site": site,
+        "region": region or "hk",
+        "max_price": limit,
+        "max_price_currency": currency if limit else None,
+        "observed_at": offers[0]["observed_at"] if offers else None,
+        "offers": rows,
+    }
+    if any(row["price"] is None for row in rows):
+        model["price_note"] = "price null means the store page did not show a price. Do not guess one."
     if not rows:
-        model["note"] = "No offers matched. Try other words or a higher budget."
+        model["note"] = "No offers matched. Try other words, another store spelling, or a higher budget."
     return {
         "ok": True,
         "summary": f"{len(rows)} 個報價" if rows else "沒有符合的報價",
@@ -258,8 +321,8 @@ def show_products(refs):
     }
 
 
-def web_search(query):
-    results = web.search(query)
+def web_search(query, region=None):
+    results = web.search(query, region=region if region in REGION_NAMES else "hk")
     return {
         "ok": True,
         "summary": f"{len(results)} 筆結果" if results else "沒有結果",
@@ -304,8 +367,9 @@ def _resolve_link(item):
         item.setdefault("link_kind", "store")
         return
     query = f"{item['name']} {item['store']}"
+    region = item.get("region") or "hk"
     try:
-        results = web.search(query)
+        results = web.search(query, region=region)
     except web.FetchError:
         results = []
     match = _store_page(results, item["name"], item["store"])
@@ -313,7 +377,8 @@ def _resolve_link(item):
         item["url"] = match
         item["link_kind"] = "store"
     else:
-        item["url"] = f"https://www.google.com/search?{urllib.parse.urlencode({'q': query, 'gl': 'hk', 'hl': 'zh-TW'})}"
+        gl, hl, _ = web.REGIONS[web.region_code(region)]
+        item["url"] = f"https://www.google.com/search?{urllib.parse.urlencode({'q': query, 'gl': gl, 'hl': hl})}"
         item["link_kind"] = "search"
 
 
@@ -336,6 +401,114 @@ def _store_page(results, name, store):
         if overlap >= 0.4:
             return result["url"]
     return None
+
+
+def _store_site(store):
+    """Return (domain or None, display name, home region) for a store name or domain."""
+    text = str(store or "").strip()
+    key = text.lower()
+    for aliases, domain, display, home in STORES:
+        if any(alias in key for alias in aliases):
+            return domain, display, home
+    host = urllib.parse.urlsplit(key if "//" in key else f"//{key}").hostname or ""
+    if "." in host and " " not in host:
+        host = host.removeprefix("www.")
+        return host, host, None
+    return None, text[:40], None
+
+
+def _store_offers(query, store, region):
+    domain, display, home = _store_site(store)
+    search_region = region or "hk"
+    price_region = region or home or "hk"
+    image_query = f"site:{domain} {query}" if domain else f"{display} {query}"
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        shopping = pool.submit(web.shopping, f"{query} {display}", 20, search_region)
+        pictures = pool.submit(web.images, image_query, 20, search_region)
+        try:
+            listed = [o for o in shopping.result() if _same_store(o["store"], domain, display)]
+        except web.FetchError:
+            listed = []
+        found = pictures.result()
+    for offer in listed:
+        offer["region"] = search_region
+    pages = []
+    for picture in found:
+        parts = urllib.parse.urlsplit(picture["url"])
+        host = parts.hostname or ""
+        if domain and not (host == domain or host.endswith("." + domain)):
+            continue
+        if parts.path in ("", "/") or (NOT_PRODUCT_PATH.search(parts.path) and not PRODUCT_PATH.search(parts.path)):
+            continue
+        if LISTING_TITLE.search(picture["title"]):
+            continue
+        if all(picture["url"] != page["url"] for page in pages):
+            pages.append(picture)
+        if len(pages) >= STORE_PAGES:
+            break
+    with ThreadPoolExecutor(max_workers=STORE_PAGES) as pool:
+        read = list(pool.map(lambda picture: _store_item(picture, display, price_region), pages))
+    items = [item for item in read if item]
+    items.sort(key=lambda item: item["price"] is None)
+    return listed[:5] + items, domain
+
+
+def _store_item(picture, store, region):
+    item = {
+        "name": _strip_site_suffix(picture["title"], store),
+        "store": store,
+        "price": None,
+        "currency": web.region_currency(region),
+        "rating": None,
+        "reviews": None,
+        "image": picture["image"],
+        "url": picture["url"],
+        "observed_at": None,
+        "region": region,
+        "link_kind": "store",
+        "flagged": False,
+    }
+    try:
+        page = web.read_page(picture["url"])
+    except web.FetchError:
+        return item
+    if urllib.parse.urlsplit(page["url"]).path in ("", "/"):
+        return None
+    price, currency = (page["price"], page["currency"]) if page["is_product"] else web.page_price(page["text"], region)
+    if price is None:
+        return item
+    item.update(
+        {
+            "name": max(_strip_site_suffix(page["name"], store), item["name"], key=len),
+            "price": price,
+            "currency": currency or item["currency"],
+            "rating": page["rating"],
+            "reviews": page["reviews"],
+            "image": page["image"] or item["image"],
+            "url": page["url"],
+            "observed_at": page["observed_at"],
+            "flagged": bool(SUSPICIOUS.search(f"{page['description']} {page['text']}")),
+        }
+    )
+    return item
+
+
+def _same_store(source, domain, display):
+    source = str(source or "").lower()
+    marks = {display.lower()} | ({domain.split(".")[0]} if domain else set())
+    return any(mark and mark in source for mark in marks)
+
+
+def _strip_site_suffix(title, store):
+    title = SITE_PREFIX.sub("", re.sub(r"\.{3}|…", "", str(title or "")).strip())
+    for _ in range(3):
+        parts = re.split(r"\s*(?:\s-\s|-|\||｜|–)\s*", title)
+        tail = parts[-1].lower() if len(parts) > 1 else ""
+        if tail and (store.lower() in tail or re.search(r"taobao|tmall|淘寶|淘宝|天貓|天猫|amazon|官網|官方|商品網", tail)):
+            title = title[: title.lower().rfind(parts[-1].lower())].rstrip(" -|｜–")
+        else:
+            break
+    return title[:160]
 
 
 def _ascii_words(text):
@@ -376,7 +549,8 @@ def _price_text(price, currency):
     if price is None:
         return "已讀取"
     amount = f"{price:,.0f}" if float(price).is_integer() else f"{price:,.2f}"
-    return f"HK${amount}" if (currency or "HKD").upper() == "HKD" else f"{currency} {amount}"
+    code = (currency or "HKD").upper()
+    return f"{CURRENCY_SIGNS[code]}{amount}" if code in CURRENCY_SIGNS else f"{code} {amount}"
 
 
 def _short_error(message):

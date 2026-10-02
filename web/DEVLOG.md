@@ -77,3 +77,13 @@ Merged `g1` into `g2`. The page stays the shopping research chat. One server ser
 - `GET /api/consent`, `POST /api/settle`, `POST /api/revoke`, `POST /api/cool`: consent, settlement, revocation, and cooling.
 
 The page does not call the purchase or settlement routes yet.
+
+## 2026-10-02 18:00
+
+The assistant now chats about anything and searches beyond Hong Kong.
+
+- `shop_search` takes `store` and `region`. Google Shopping has no Taobao offers, so a store search finds `site:taobao.com` product pages through Google Images and reads each page. On 2026-10-02, "淘寶上的 iPhone 16 手機殼" returned 3 `world.taobao.com/item/` pages at ¥24.90, ¥318, and ¥399, each with its picture.
+- Cards show the currency the store used (人民幣 ¥, US$, NT$, 日圓 ¥) and "價格見商店" when the page hid the price. Prices are never converted.
+- Category and listing pages (`/list/`, `/topic/`, titles like "促銷價格") are skipped. Amazon Japan answers bots with a challenge page, so those cards keep the search link and show no price.
+- The gateway sometimes answers "The request could not be completed. Please retry later, or reduce the request parameters/content." The round is now retried once after 1.5 s; a second failure shows "模型服務暫時忙碌，請稍後再試一次。". Tool results from earlier turns are cut to 1,200 characters before they are sent again.
+- Only one set of cards is shown per turn.

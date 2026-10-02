@@ -21,14 +21,34 @@ TIMEOUT = 15
 MAX_BYTES = 2_500_000
 TEXT_LIMIT = 2500
 HKT = timezone(timedelta(hours=8))
+REGIONS = {
+    "hk": ("hk", "zh-tw", "HKD"),
+    "tw": ("tw", "zh-tw", "TWD"),
+    "cn": ("cn", "zh-cn", "CNY"),
+    "jp": ("jp", "ja", "JPY"),
+    "kr": ("kr", "ko", "KRW"),
+    "sg": ("sg", "en", "SGD"),
+    "us": ("us", "en", "USD"),
+    "uk": ("gb", "en", "GBP"),
+    "au": ("au", "en", "AUD"),
+}
+PAGE_PRICE = re.compile(r"(HK\$|NT\$|US\$|S\$|A\$|RMB|CN¥|JP¥|¥|￥|€|£|₩|\$)\s?(\d[\d,]*(?:\.\d{1,2})?)")
 
 
 class FetchError(Exception):
     pass
 
 
-def search(query, limit=8):
-    data = _serper("search", query, num=10)
+def region_code(region):
+    return region if region in REGIONS else "hk"
+
+
+def region_currency(region):
+    return REGIONS[region_code(region)][2]
+
+
+def search(query, limit=8, region="hk"):
+    data = _serper("search", query, num=10, region=region)
     results = []
     for item in data.get("organic") or []:
         link = item.get("link")
@@ -47,12 +67,12 @@ def search(query, limit=8):
     return results
 
 
-def shopping(query, limit=10):
-    data = _serper("shopping", query, num=20)
+def shopping(query, limit=10, region="hk"):
+    data = _serper("shopping", query, num=20, region=region)
     observed = datetime.now(HKT).isoformat(timespec="minutes")
     items = []
     for item in data.get("shopping") or []:
-        price, currency = _price(item.get("price"))
+        price, currency = _price(item.get("price"), region)
         link = item.get("link")
         if price is None or not isinstance(link, str) or not link.startswith("https://"):
             continue
@@ -74,14 +94,43 @@ def shopping(query, limit=10):
     return items
 
 
-def _serper(kind, query, num):
+def images(query, limit=10, region="hk"):
+    data = _serper("images", query, num=10, region=region)
+    results = []
+    for item in data.get("images") or []:
+        link, image = item.get("link"), item.get("imageUrl")
+        if not isinstance(link, str) or not link.startswith("https://"):
+            continue
+        results.append(
+            {
+                "title": _clean(item.get("title"))[:160],
+                "url": _strip_tracking(link),
+                "site": _site(link),
+                "image": image if isinstance(image, str) and image.startswith("https://") else None,
+            }
+        )
+        if len(results) >= limit:
+            break
+    return results
+
+
+def page_price(text, region="hk"):
+    """First price printed near the top of a product page, for stores without structured data."""
+    match = PAGE_PRICE.search(str(text or "")[:900])
+    if not match:
+        return None, None
+    return _price(match.group(0), region)
+
+
+def _serper(kind, query, num, region="hk"):
     query = str(query or "").strip()
     if not query:
         raise FetchError("Empty search query.")
     key = os.environ.get("SERPER_API_KEY", "")
     if not key:
         raise FetchError("Web search is not set up. Add SERPER_API_KEY to web/.env.")
-    body = json.dumps({"q": query, "gl": "hk", "hl": "zh-tw", "num": num}).encode("utf-8")
+    gl, hl, _ = REGIONS[region_code(region)]
+    body = json.dumps({"q": query, "gl": gl, "hl": hl, "num": num}).encode("utf-8")
     request = urllib.request.Request(
         f"{SERPER_URL}/{kind}",
         data=body,
@@ -101,18 +150,33 @@ def _serper(kind, query, num):
         raise FetchError("Search did not respond.") from error
 
 
-def _price(value):
+def _price(value, region="hk"):
     text = str(value or "")
     number = _to_number(text)
     if number is None:
         return None, None
     upper = text.upper()
-    if "HK$" in upper or "HKD" in upper or upper.strip().startswith("$"):
-        return number, "HKD"
-    for code, mark in (("USD", "US$"), ("CNY", "¥"), ("JPY", "円"), ("EUR", "€"), ("GBP", "£")):
-        if mark in text or code in upper:
+    local = region_currency(region)
+    marks = (
+        ("HKD", ("HK$", "HKD")),
+        ("TWD", ("NT$", "TWD")),
+        ("USD", ("US$", "USD")),
+        ("SGD", ("S$", "SGD")),
+        ("AUD", ("A$", "AUD")),
+        ("JPY", ("JP¥", "JPY", "円")),
+        ("CNY", ("CN¥", "RMB", "CNY", "￥")),
+        ("KRW", ("₩", "KRW", "원")),
+        ("EUR", ("€", "EUR")),
+        ("GBP", ("£", "GBP")),
+    )
+    for code, signs in marks:
+        if any(sign in upper for sign in signs):
             return number, code
-    return number, "HKD"
+    if "¥" in text:
+        return number, "JPY" if local == "JPY" else "CNY"
+    if "元" in text and local not in ("TWD", "CNY"):
+        return number, "CNY"
+    return number, local
 
 
 def _strip_tracking(link):

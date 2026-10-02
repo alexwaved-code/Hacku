@@ -11,7 +11,7 @@
       <header class="chat-header">
         <div>
           <h1>購物助理</h1>
-          <p class="sub">幫你找香港買得到的商品。下單由你自己決定。</p>
+          <p class="sub">上網查真實商品和價錢，也能指定淘寶、Amazon 等商店。下單由你自己決定。</p>
         </div>
         <button type="button" id="new-chat" class="pill">新對話</button>
       </header>
@@ -20,11 +20,11 @@
         <div class="examples" id="examples">
           <button type="button" class="pill" data-prompt="HK$500 以內，通勤用的降噪耳機">降噪耳機 HK$500 內</button>
           <button type="button" class="pill" data-prompt="可以充手提電腦的行動電源">充手提電腦的行動電源</button>
-          <button type="button" class="pill" data-prompt="推薦一個電熱水壺">電熱水壺</button>
+          <button type="button" class="pill" data-prompt="淘寶上的 iPhone 16 手機殼">淘寶手機殼</button>
         </div>
         <form id="composer" class="composer">
           <label class="sr-only" for="message">訊息</label>
-          <input id="message" name="message" type="text" autocomplete="off" placeholder="想買什麼？預算多少？" />
+          <input id="message" name="message" type="text" autocomplete="off" placeholder="想買什麼，或想問什麼？" />
           <button type="submit" id="send">送出</button>
           <button type="button" id="stop" hidden>停止</button>
         </form>
