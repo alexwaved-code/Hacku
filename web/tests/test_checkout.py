@@ -21,10 +21,11 @@ SESSION = {"id": "cs_test_abcdefghijkl", "url": "https://checkout.stripe.com/c/p
 
 @mock.patch.dict(os.environ, {"STRIPE_SECRET_KEY": "sk_test_dummy"})
 class CheckoutTest(TempData):
-    def test_live_key_is_refused(self):
-        with mock.patch.dict(os.environ, {"STRIPE_SECRET_KEY": "sk_live_x"}), self.assertRaises(checkout.CheckoutError) as caught:
+    def test_live_key_needs_the_switch(self):
+        with mock.patch.dict(os.environ, {"STRIPE_SECRET_KEY": "sk_live_x", "HACKU_LIVE": ""}), self.assertRaises(checkout.CheckoutError) as caught:
             checkout.create([item()])
         self.assertEqual(caught.exception.status, 403)
+        self.assertIn("HACKU_LIVE", str(caught.exception))
 
     def test_edited_price_is_refused(self):
         with self.assertRaises(checkout.CheckoutError) as caught:
@@ -78,61 +79,85 @@ class CheckoutTest(TempData):
         self.assertEqual(form["adaptive_pricing[enabled]"], "false")
 
 
-SAVED = ("cus_test", "pm_test", "Visa •••• 4242")
-INTENT = {"id": "pi_test_1", "status": "succeeded"}
+LIVE = {"STRIPE_SECRET_KEY": "sk_live_dummy", "HACKU_LIVE": "1"}
+PAID = {
+    "payment_status": "paid",
+    "status": "complete",
+    "currency": "hkd",
+    "amount_total": 4800,
+    "livemode": True,
+    "payment_intent": "pi_live_1",
+    "customer_details": {"email": "a@example.com", "name": "Chan Tai Man", "phone": "+85291234567"},
+    "collected_information": {
+        "shipping_details": {"name": "Chan Tai Man", "address": {"line1": "1 Nathan Road", "line2": "Flat A", "city": "Tsim Sha Tsui", "state": "Kowloon", "country": "HK"}}
+    },
+}
+LIVE_SESSION = {"id": "cs_live_abcdefghijkl", "url": "https://checkout.stripe.com/c/pay/cs_live_abcdefghijkl"}
 
 
 @mock.patch.dict(os.environ, {"STRIPE_SECRET_KEY": "sk_test_dummy"})
-class AgentChargeTest(TempData):
-    def test_needs_a_saved_card(self):
-        mandate.issue({"HKD": 500}, 7)
-        with mock.patch.object(checkout.wallet, "current", return_value=None), self.assertRaises(checkout.CheckoutError) as caught:
-            checkout.charge([item()])
-        self.assertIn("付款卡", str(caught.exception))
-
-    def test_mandate_gates_the_agent(self):
-        mandate.issue({"HKD": 50}, 7)
-        with mock.patch.object(checkout.wallet, "current", return_value=SAVED), mock.patch.object(checkout.stripe_api, "call") as stripe:
-            with self.assertRaises(checkout.CheckoutError):
-                checkout.charge([item(price=100)])
-        stripe.assert_not_called()
-
+class AgentOrderTest(TempData):
     def test_quote_checks_without_charging(self):
         mandate.issue({"HKD": 500}, 7)
-        with (
-            mock.patch.object(checkout.wallet, "current", return_value=SAVED),
-            mock.patch.object(checkout.verifier, "verify_products") as verify,
-            mock.patch.object(checkout.stripe_api, "call") as stripe,
-        ):
+        with mock.patch.object(checkout.verifier, "verify_products") as verify, mock.patch.object(checkout.stripe_api, "call") as stripe:
             order = checkout.quote([item(qty=2)])
             with self.assertRaises(checkout.CheckoutError) as caught:
                 checkout.quote([item(price=600)])
-        self.assertEqual((order["total"], order["currency"], order["cap"]), (200.0, "HKD", 500))
-        self.assertEqual(order["card"], "Visa •••• 4242")
+        self.assertEqual((order["total"], order["currency"], order["cap"], order["live"]), (200.0, "HKD", 500, False))
         self.assertIn("上限", str(caught.exception))
         stripe.assert_not_called()
         verify.assert_not_called()
         self.assertEqual(checkout.recent()["orders"], [])
 
-    def test_charges_once_and_records_it(self):
+    def test_agent_checkout_asks_for_a_hong_kong_address_and_returns_to_the_chat(self):
         mandate.issue({"HKD": 500}, 7)
-        patches = (
-            mock.patch.object(checkout.wallet, "current", return_value=SAVED),
-            mock.patch.object(checkout.verifier, "verify_products", rated(3)),
-            mock.patch.object(checkout.stripe_api, "call", return_value=INTENT),
-        )
-        with patches[0], patches[1], patches[2] as stripe:
-            first = checkout.charge([item(qty=2)])
-            again = checkout.charge([item(qty=2)])
+        with mock.patch.object(checkout.verifier, "verify_products", rated(3)), mock.patch.object(checkout.stripe_api, "call", return_value=SESSION) as stripe:
+            checkout.create([item()], via="agent")
         form = dict(stripe.call_args.args[2])
-        self.assertEqual(form["amount"], "20000")
-        self.assertEqual(form["off_session"], "true")
-        self.assertEqual(stripe.call_args_list[0].kwargs["idempotency"], stripe.call_args_list[1].kwargs["idempotency"])
-        self.assertTrue(first["paid"])
-        self.assertEqual(first["hash"], again["hash"])
-        recent = checkout.recent()
-        self.assertTrue(recent["chain_ok"])
-        self.assertEqual([order["via"] for order in recent["orders"]], ["agent"])
+        self.assertEqual(form["shipping_address_collection[allowed_countries][0]"], "HK")
+        self.assertEqual(form["phone_number_collection[enabled]"], "true")
+        self.assertTrue(form["success_url"].endswith("/?paid={CHECKOUT_SESSION_ID}"))
+
+    @mock.patch.dict(os.environ, LIVE)
+    def test_live_orders_are_hkd_and_capped(self):
+        mandate.issue({"HKD": 500, "CNY": 500}, 7)
+        with mock.patch.object(checkout.stripe_api, "call") as stripe:
+            with self.assertRaises(checkout.CheckoutError) as over:
+                checkout.quote([item(price=101)])
+            with self.assertRaises(checkout.CheckoutError) as currency:
+                checkout.quote([item(price=20, currency="CNY")])
+            fine = checkout.quote([item(price=48)])
+        stripe.assert_not_called()
+        self.assertIn("HK$100", str(over.exception))
+        self.assertIn("HKD", str(currency.exception))
+        self.assertTrue(fine["live"])
+
+    @mock.patch.dict(os.environ, LIVE)
+    def test_paid_order_keeps_the_address_then_is_placed_or_refunded(self):
+        mandate.issue({"HKD": 100}, 7)
+        with mock.patch.object(checkout.verifier, "verify_products", rated(3)), mock.patch.object(checkout.stripe_api, "call", return_value=LIVE_SESSION):
+            checkout.create([item(price=48)], via="agent")
+        with mock.patch.object(checkout.stripe_api, "call", return_value=PAID):
+            result = checkout.status(LIVE_SESSION["id"])
+        self.assertTrue(result["live"])
+        self.assertIn("1 Nathan Road", result["ship_to"])
+        order = checkout.fulfilment()["orders"][0]
+        self.assertEqual(order["fulfil"], "pending")
+        self.assertEqual(order["shipping"]["phone"], "+85291234567")
+        self.assertEqual(order["items"][0]["url"], "https://shop.example/1")
+
+        with self.assertRaises(checkout.CheckoutError):
+            checkout.mark_placed(order["id"], " ")
+        self.assertEqual(checkout.mark_placed(order["id"], "HK123456")["fulfil"], "placed")
+        with mock.patch.object(checkout.stripe_api, "call", return_value={"id": "re_1", "status": "succeeded"}) as stripe:
+            refunded = checkout.refund(order["id"])
+        self.assertEqual(dict(stripe.call_args.args[2])["payment_intent"], "pi_live_1")
+        self.assertEqual(refunded["fulfil"], "refunded")
+        self.assertIn("已退款", refunded["fulfil_note"])
+        with self.assertRaises(checkout.CheckoutError):
+            checkout.mark_placed(order["id"], "HK999")
+        with store.db() as conn:
+            self.assertTrue(store.chain_ok(conn))
 
 
 if __name__ == "__main__":

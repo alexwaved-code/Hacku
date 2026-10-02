@@ -58,6 +58,17 @@ def stripe_key():
     return os.environ.get("STRIPE_SECRET_KEY", "").strip()
 
 
+def live_payments():
+    """Real money is allowed only when HACKU_LIVE=1 and the key is a live key."""
+    return os.environ.get("HACKU_LIVE", "").strip() == "1"
+
+
+def browser_profile():
+    path = data_dir() / "browser"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
 def data_dir():
     path = Path(os.environ.get("HACKU_DATA_DIR") or ROOT / "data")
     path.mkdir(parents=True, exist_ok=True)

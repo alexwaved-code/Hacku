@@ -6,20 +6,30 @@ from urllib.parse import parse_qs, urlparse
 import json
 import socket
 import sys
+import threading
 import traceback
 
 import config
 import llm
 from agent import harness, tools
-from pay import checkout, mandate, wallet
+from pay import checkout, mandate
+from shop import browser
 
 MAX_BODY = 600_000
 MAX_MESSAGES = 80
-PAY_ROUTES = ("/api/checkout", "/api/pay", "/api/mandate", "/api/mandate/revoke", "/api/card", "/api/card/forget")
+PAY_ROUTES = (
+    "/api/checkout",
+    "/api/pay",
+    "/api/mandate",
+    "/api/mandate/revoke",
+    "/api/fulfil/start",
+    "/api/fulfil/placed",
+    "/api/fulfil/refund",
+)
 GET_ROUTES = {
     "/api/mandate": mandate.view,
-    "/api/card": wallet.view,
     "/api/orders": checkout.recent,
+    "/api/fulfil": checkout.fulfilment,
 }
 
 
@@ -130,13 +140,15 @@ class Handler(SimpleHTTPRequestHandler):
         if path == "/api/checkout":
             return checkout.create(payload.get("items"))
         if path == "/api/pay":
-            return checkout.charge(payload.get("items"))
+            return checkout.create(payload.get("items"), via="agent")
         if path == "/api/mandate/revoke":
             return mandate.revoke()
-        if path == "/api/card":
-            return wallet.save_test_card()
-        if path == "/api/card/forget":
-            return wallet.forget()
+        if path == "/api/fulfil/start":
+            return start_fulfil(payload.get("id"))
+        if path == "/api/fulfil/placed":
+            return checkout.mark_placed(payload.get("id"), payload.get("store_order"))
+        if path == "/api/fulfil/refund":
+            return checkout.refund(payload.get("id"))
         try:
             return mandate.issue(payload.get("caps"), payload.get("days"))
         except mandate.MandateError as error:
@@ -181,6 +193,24 @@ def agent_quote(items):
 
 
 tools.set_quoter(agent_quote)
+
+
+def start_fulfil(order_id):
+    order = checkout.order(order_id)
+    if order["fulfil"] in ("filling", "placed", "refunded"):
+        raise checkout.CheckoutError("這筆訂單現在不能代填。", 409)
+    checkout.set_fulfil(order["id"], "filling")
+    threading.Thread(target=run_fulfil, args=(order,), daemon=True).start()
+    return checkout.order(order["id"])
+
+
+def run_fulfil(order):
+    try:
+        step, note = browser.fill(order)
+    except Exception as error:
+        traceback.print_exc()
+        step, note = "failed", f"代填失敗：{type(error).__name__}"
+    checkout.set_fulfil(order["id"], step, note)
 
 
 def normalize_messages(raw):
@@ -264,8 +294,11 @@ def main():
         print("No VERIFY_* settings. The chat model also rates listings at checkout.", flush=True)
     if not config.serper_key():
         print("Missing SERPER_API_KEY. Live product search is off.", flush=True)
-    if not config.stripe_key().startswith(("sk_test_", "rk_test_")):
-        print("No Stripe test key. Cart checkout is off.", flush=True)
+    key = config.stripe_key()
+    if key.startswith(("sk_live_", "rk_live_")):
+        print("Stripe LIVE key: real money." if config.live_payments() else "Stripe live key without HACKU_LIVE=1. Checkout is off.", flush=True)
+    elif not key.startswith(("sk_test_", "rk_test_")):
+        print("No Stripe key. Checkout is off.", flush=True)
     server.serve_forever()
 
 

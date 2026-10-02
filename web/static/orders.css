@@ -1,0 +1,75 @@
+.fulfil {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.fulfil-step {
+  margin: 0;
+  font-weight: 700;
+}
+
+.fulfil-step.cart_ready,
+.fulfil-step.placed {
+  color: var(--good);
+}
+
+.fulfil-step.failed,
+.fulfil-step.needs_login {
+  color: #9b1c1c;
+}
+
+.fulfil-note {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.fulfil-items {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 14px;
+}
+
+.fulfil-items a {
+  color: inherit;
+}
+
+.fulfil-meta {
+  color: var(--muted);
+}
+
+.fulfil-ship {
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: var(--paper);
+  font-size: 14px;
+}
+
+.fulfil-ship p {
+  margin: 2px 0;
+}
+
+.fulfil-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.store-order {
+  flex: 1 1 140px;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font: inherit;
+}
+
+.pill.danger {
+  color: #9b1c1c;
+}
+
+.fulfil-actions button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
