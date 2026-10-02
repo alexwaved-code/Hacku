@@ -22,4 +22,6 @@ Google Shopping `link` values open an empty Google redirect page outside Google.
 
 The model sometimes skipped `show_products` and wrote a table instead. After any tool returns refs, the next round now forces `show_products`, and replies are capped at 250 tokens.
 
+Added `ask_user`. For an open request such as "推薦耳機", the agent first asks budget, use, and type as one card. After the cards, it may ask one trade-off question between its picks, for example "Clip 5：掛勾扣背包 / Go 4：更輕更便宜". The answer returns as the tool result, so the loop continues without a new user message. Typed text while a card is open counts as the answer. A tool call left without a reply is answered with `{"skipped": true}` before the next model call.
+
 The gateway sometimes stalls a stream. Reads time out after 25 s. A round with no output yet is retried once. A reply that stalls after some text keeps that text.

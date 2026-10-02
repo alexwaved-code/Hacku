@@ -42,6 +42,7 @@ Model requests use `Authorization: Bearer <key>`, `stream: true`, `max_tokens: 4
 
 | Tool | What it does |
 |---|---|
+| `ask_user` | 1 to 3 multiple-choice questions (budget, use, one key preference, or a trade-off between the shown picks). The turn pauses. The page shows a question card, and the user's choices come back as this tool's result: `{"answers": [...], "note": "…"}`, `{"skipped": true}`, or `{"user_reply": "…"}` when they type instead. |
 | `shop_search` | Google Shopping, Hong Kong (`gl=hk`). Real offers: name, store, HKD price, rating, picture. Each offer gets a `ref`. |
 | `show_products` | Shows up to 3 refs as cards. Card data comes from the cached search result, so the model cannot change a price or link. Google Shopping links are replaced by the store's own product page when a search finds one on the store's domain with the same model number; otherwise the card links to a Google search for that product and store. After any tool returns refs, the next round is forced to call `show_products`. |
 | `web_search` | Google search, Hong Kong. Titles, links, snippets. |
@@ -82,5 +83,6 @@ The response is SSE (`text/event-stream`), one JSON object per `data:` line:
 | `retract` | | Drop the text of this round. It was said before a tool call. |
 | `tool_start` | `id`, `name`, `label` | A tool started. The page shows the label. |
 | `tool_result` | `id`, `name`, `ok`, `summary`, `ui` | A tool finished. `ui.kind == "products"` carries the cards. |
+| `ask` | `id`, `questions` | Question card. The next request sends `{"role": "tool", "tool_call_id": id, "content": "<answer JSON>"}` instead of a user message. |
 | `done` | `messages` | New assistant and tool messages to add to the thread. |
 | `error` | `message` | Shown with a retry button. |

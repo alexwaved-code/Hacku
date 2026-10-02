@@ -12,11 +12,14 @@ const els = {
 
 const IDLE_TIMEOUT_MS = 75000;
 const GREETING = "想買什麼？說出預算和用途，我幫你上網查香港的真實價錢。";
+const PLACEHOLDER = "想買什麼？預算多少？";
+const ASK_PLACEHOLDER = "點上面的選項，或直接打字回答";
 
 const state = {
   thread: [],
   busy: false,
   controller: null,
+  pendingAsk: null,
 };
 
 els.form.addEventListener("submit", (event) => {
@@ -34,43 +37,63 @@ resetChat();
 
 /* ---------- Sending ---------- */
 
-async function send(text) {
+function send(text) {
   text = String(text || "").trim();
   if (!text || state.busy) return;
+  const reply = takePendingAsk({ user_reply: text });
+  runTurn(text, [reply || { role: "user", content: text }]);
+}
 
-  const userItem = appendUser(text);
+function answerAsk(payload, display) {
+  if (state.busy) return;
+  const reply = takePendingAsk(payload);
+  if (reply) runTurn(display, [reply]);
+}
+
+function takePendingAsk(payload) {
+  const ask = state.pendingAsk;
+  if (!ask) return null;
+  state.pendingAsk = null;
+  els.input.placeholder = PLACEHOLDER;
+  ask.close(payload);
+  return { role: "tool", tool_call_id: ask.id, content: JSON.stringify(payload) };
+}
+
+async function runTurn(display, entries) {
+  const userItem = appendUser(display);
   const turn = createTurn();
-  state.thread.push({ role: "user", content: text });
+  const base = state.thread.length;
+  state.thread.push(...entries);
   setBusy(true);
 
   const controller = new AbortController();
   state.controller = controller;
+  const retry = () => {
+    userItem.remove();
+    turn.remove();
+    runTurn(display, entries);
+  };
 
   try {
     const added = await streamChat(controller, turn);
     await turn.finish();
     state.thread.push(...added);
   } catch (error) {
-    state.thread.pop();
     if (turn.timedOut) {
-      turn.fail("等太久沒有回應，請再試一次。", () => retry(userItem, turn, text));
+      state.thread.length = base;
+      turn.fail("等太久沒有回應，請再試一次。", retry);
     } else if (controller.signal.aborted) {
       const partial = turn.stop();
-      if (partial) state.thread.push({ role: "user", content: text }, { role: "assistant", content: partial });
+      if (partial) state.thread.push({ role: "assistant", content: partial });
     } else {
-      turn.fail(error instanceof Error ? error.message : "發生錯誤。", () => retry(userItem, turn, text));
+      state.thread.length = base;
+      turn.fail(error instanceof Error ? error.message : "發生錯誤。", retry);
     }
   } finally {
     state.controller = null;
     setBusy(false);
-    els.input.focus();
+    if (!state.pendingAsk) els.input.focus();
   }
-}
-
-function retry(userItem, turn, text) {
-  userItem.remove();
-  turn.remove();
-  send(text);
 }
 
 async function streamChat(controller, turn) {
@@ -128,6 +151,7 @@ async function streamChat(controller, turn) {
         else if (event.type === "retract") turn.retract();
         else if (event.type === "tool_start") turn.stepStart(event);
         else if (event.type === "tool_result") turn.stepDone(event);
+        else if (event.type === "ask") turn.ask(event);
         else if (event.type === "error") throw new Error(event.message || "助理發生錯誤。");
         else if (event.type === "done") added = Array.isArray(event.messages) ? event.messages : [];
       }
@@ -162,6 +186,8 @@ function setBusy(busy) {
 function resetChat() {
   state.controller?.abort();
   state.thread = [];
+  state.pendingAsk = null;
+  els.input.placeholder = PLACEHOLDER;
   els.list.replaceChildren(h("li", { class: "message agent" }, GREETING));
   els.input.value = "";
   els.input.focus();
@@ -216,9 +242,18 @@ function createTurn() {
         scrollToEnd();
       }
     },
+    ask(event) {
+      status.hidden = true;
+      const card = askCard(event.questions || []);
+      item.append(card.el);
+      state.pendingAsk = { id: event.id, close: card.close };
+      els.input.placeholder = ASK_PLACEHOLDER;
+      scrollToEnd();
+    },
     async finish() {
       await typer.finish();
       status.remove();
+      item.querySelector(".ask button")?.focus({ preventScroll: true });
     },
     stop() {
       typer.flush();
@@ -266,9 +301,91 @@ function productCard(product, best) {
     : h("div", { class: "card" }, content);
 }
 
+function askCard(questions) {
+  const picked = questions.map(() => new Set());
+  const note = h("input", { class: "ask-note", type: "text", placeholder: "其他想法（可不填）", "aria-label": "其他想法" });
+  const submit = h("button", { type: "button", class: "ask-send", disabled: true }, "送出");
+  const skip = h("button", { type: "button", class: "pill" }, "略過");
+  const quick = questions.length === 1 && !questions[0].multiple;
+
+  const ready = () => picked.every((set) => set.size > 0) || note.value.trim().length > 0;
+  const refresh = () => {
+    submit.disabled = !ready();
+  };
+
+  const groups = questions.map((question, index) => {
+    const buttons = question.options.map((label) =>
+      h("button", { type: "button", class: "opt", "aria-pressed": "false" }, label)
+    );
+    buttons.forEach((button) =>
+      button.addEventListener("click", () => {
+        const set = picked[index];
+        const label = button.textContent;
+        if (question.multiple) {
+          set.has(label) ? set.delete(label) : set.add(label);
+        } else {
+          set.clear();
+          set.add(label);
+        }
+        buttons.forEach((b) => b.setAttribute("aria-pressed", String(set.has(b.textContent))));
+        refresh();
+        if (quick) submitAnswers();
+      })
+    );
+    return h(
+      "fieldset",
+      { class: "q" },
+      h("legend", {}, question.prompt, question.multiple ? h("span", { class: "hint" }, "可多選") : null),
+      h("div", { class: "opts" }, buttons)
+    );
+  });
+
+  const submitAnswers = () => {
+    if (!ready()) return;
+    const answers = questions
+      .map((question, index) => ({ question: question.prompt, chosen: [...picked[index]] }))
+      .filter((answer) => answer.chosen.length);
+    const extra = note.value.trim();
+    const payload = extra ? { answers, note: extra } : { answers };
+    const display = [...answers.map((answer) => answer.chosen.join("、")), extra].filter(Boolean).join(" · ");
+    answerAsk(payload, display);
+  };
+
+  note.addEventListener("input", refresh);
+  note.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" && !event.isComposing) {
+      event.preventDefault();
+      submitAnswers();
+    }
+  });
+  submit.addEventListener("click", submitAnswers);
+  skip.addEventListener("click", () => answerAsk({ skipped: true }, "略過"));
+
+  if (quick) groups[0].querySelector(".opts").append(skip);
+  const el = h(
+    "div",
+    { class: "ask" },
+    groups,
+    quick ? null : h("div", { class: "ask-foot" }, note, h("div", { class: "ask-actions" }, submit, skip))
+  );
+
+  const close = (payload) => {
+    el.classList.add("closed");
+    el.querySelectorAll("button, input").forEach((control) => {
+      control.disabled = true;
+    });
+    if (payload.skipped) el.append(h("p", { class: "note" }, "已略過"));
+    else if (payload.user_reply) el.append(h("p", { class: "note" }, "已改用文字回答"));
+  };
+
+  return { el, close };
+}
+
 function shortStore(store) {
-  const name = String(store || "商店").split(/\s+/)[0];
-  return name.length > 12 ? "商店" : name;
+  const name = String(store || "").trim();
+  if (name && name.length <= 10) return name;
+  const local = name.split(/\s+/).find((part) => /[\u3400-\u9fff]/.test(part) && part.length <= 8);
+  return local || "商店";
 }
 
 function hideBrokenImage(event) {
