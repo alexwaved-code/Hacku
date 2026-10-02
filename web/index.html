@@ -1,29 +1,34 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="zh-Hant">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Shopping agent</title>
+    <title>購物助理</title>
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
     <main class="chat">
       <header class="chat-header">
-        <h1>Shopping agent</h1>
+        <div>
+          <h1>購物助理</h1>
+          <p class="sub">幫你找香港買得到的商品。下單由你自己決定。</p>
+        </div>
+        <button type="button" id="new-chat" class="pill">新對話</button>
       </header>
       <ol id="messages" class="messages" aria-live="polite"></ol>
-      <form id="composer" class="composer">
-        <label class="sr-only" for="message">Message</label>
-        <input
-          id="message"
-          name="message"
-          type="text"
-          autocomplete="off"
-          placeholder="Message"
-          required
-        />
-        <button type="submit">Send</button>
-      </form>
+      <footer class="dock">
+        <div class="examples" id="examples">
+          <button type="button" class="pill" data-prompt="HK$500 以內，通勤用的降噪耳機">降噪耳機 HK$500 內</button>
+          <button type="button" class="pill" data-prompt="可以充手提電腦的行動電源">充手提電腦的行動電源</button>
+          <button type="button" class="pill" data-prompt="推薦一個電熱水壺">電熱水壺</button>
+        </div>
+        <form id="composer" class="composer">
+          <label class="sr-only" for="message">訊息</label>
+          <input id="message" name="message" type="text" autocomplete="off" placeholder="想買什麼？預算多少？" />
+          <button type="submit" id="send">送出</button>
+          <button type="button" id="stop" hidden>停止</button>
+        </form>
+      </footer>
     </main>
     <script src="app.js"></script>
   </body>
