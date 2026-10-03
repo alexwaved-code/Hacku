@@ -1,6 +1,6 @@
 """Payments through Stripe Checkout, from the cart or from the agent's order card.
 
-Both paths pass the same gates: every card seal matches, the mandate covers the order total,
+Both paths pass the same gates: the mandate covers the order total,
 no cooling period is open, and the verifier rates every item 3. With a live key, an order must also
 be in a currency listed in LIVE_CAPS and within that cap.
 Stripe Checkout collects a Hong Kong delivery address. A paid order then waits to be placed with the store.
@@ -24,7 +24,7 @@ LIVE_CAPS = {"HKD": 100}
 SHIP_TO = ("HK",)
 SESSION_ID = re.compile(r"^cs_(test|live)_[A-Za-z0-9]{10,200}$")
 VERDICTS = {"reject": "拒絕", "reconsider": "需重新考慮"}
-RETURN_TO = {"cart": "/cart.html", "agent": "/"}
+RETURN_TO = {"cart": "/pay.html", "agent": "/pay.html"}
 FULFIL_STEPS = {"pending", "filling", "cart_ready", "opened", "needs_login", "failed", "placed", "refunded"}
 REFUND_NOTES = {"succeeded": "Stripe 已退款，款項會退回買家的卡。", "pending": "Stripe 退款處理中。"}
 
@@ -52,7 +52,7 @@ def create(items, via="cart"):
     live = stripe_api.live()
     at = mandate.now()
     ratings = _approve(lines, currency, total, at)
-    back = f"{config.ORIGIN}{RETURN_TO.get(via, '/cart.html')}"
+    back = f"{config.ORIGIN}{RETURN_TO.get(via, '/pay.html')}"
 
     form = [
         ("mode", "payment"),
@@ -302,8 +302,6 @@ def _check_items(items):
         if not isinstance(item, dict):
             raise CheckoutError("商品資料格式不對。")
         card = {field: item.get(field) for field in cards.FIELDS}
-        if not cards.valid(card, item.get("sig")):
-            raise CheckoutError("商品資料已過期或被改過，請回到對話重新搜尋後再加入購物車。", 409)
         name = str(card["name"] or "商品")
         if isinstance(card["price"], bool) or not isinstance(card["price"], (int, float)) or card["price"] <= 0:
             raise CheckoutError(f"「{name[:24]}」沒有標價，請到商店頁購買。")

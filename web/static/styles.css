@@ -179,7 +179,8 @@ button {
 }
 
 .drawer-close,
-.menu-btn {
+.menu-btn,
+.fold-chats {
   display: none;
 }
 
@@ -1252,27 +1253,40 @@ body > .chat {
 }
 
 .chat-header {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 18px 20px;
+  min-height: 48px;
+  padding: 8px 16px;
   border-bottom: 1px solid var(--line);
 }
 
+.menu-btn,
+.header-actions {
+  position: relative;
+  z-index: 1;
+}
+
 .chat-heading {
+  position: absolute;
+  left: 50%;
+  width: min(52%, 240px);
   min-width: 0;
-  flex: 1;
+  pointer-events: none;
+  transform: translateX(-50%);
 }
 
 #chat-title {
   margin: 0;
   overflow: hidden;
-  color: var(--ink);
-  font-size: 18px;
-  font-weight: 650;
-  letter-spacing: -0.02em;
-  line-height: 1.25;
+  color: #5c564e;
+  font-size: 13px;
+  font-weight: 550;
+  letter-spacing: 0.01em;
+  line-height: 1.3;
+  text-align: center;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -1286,8 +1300,8 @@ body > .chat {
 
 .chat-header h1 {
   margin: 0;
-  font-size: 18px;
-  font-weight: 650;
+  font-size: 13px;
+  font-weight: 550;
 }
 
 .sub {
@@ -3207,16 +3221,47 @@ a.card:hover .pic img {
 }
 
 @media (min-width: 901px) {
+  .fold-chats {
+    display: grid;
+  }
+
+  body.chats-folded .fold-chats {
+    display: none;
+  }
+
+  body.chats-folded .app {
+    grid-template-columns: minmax(0, 1fr) 320px;
+  }
+
+  body.chats-folded .side-chats {
+    display: none;
+  }
+
+  body.chats-folded .menu-btn {
+    display: grid;
+  }
+
   .app .chat-header {
-    padding: 16px 28px 14px;
+    min-height: 44px;
+    padding: 8px 28px;
   }
 
   .app .chat-header .header-actions {
     display: none;
   }
 
-  .app .chat-header #chat-title {
-    font-size: 20px;
+  .app .chat-header .chat-heading {
+    width: min(70%, 360px);
+  }
+}
+
+@media (max-width: 640px) {
+  .chat-header .lang-narrow {
+    display: none;
+  }
+
+  .chat-heading {
+    width: min(32%, 120px);
   }
 }
 
@@ -3334,9 +3379,35 @@ a.card:hover .pic img {
 }
 
 .receipt.paid {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  overflow: hidden;
   background: #ecfdf3;
-  border-color: #bbe5c8;
+  border-color: #86d5a2;
   color: #14532d;
+  box-shadow: 0 8px 24px rgba(20, 83, 45, 0.08);
+}
+
+.receipt-mark {
+  flex: none;
+  width: 36px;
+  height: 36px;
+  margin-top: 1px;
+  padding: 8px;
+  border-radius: 50%;
+  background: #16a34a;
+  color: #fff;
+  box-shadow: 0 0 0 6px rgba(22, 163, 74, 0.12);
+}
+
+.receipt-mark path {
+  stroke-width: 2.4;
+}
+
+.receipt-body {
+  min-width: 0;
+  flex: 1;
 }
 
 .receipt.refused {
@@ -3452,3 +3523,4 @@ a.card:hover .pic img {
   font-size: 13px;
   font-weight: 600;
 }
+

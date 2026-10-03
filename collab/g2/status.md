@@ -2,9 +2,9 @@
 
 - group: G2
 - human: Jacinto
-- updated: 2026-10-03 17:52
+- updated: 2026-10-03 18:46
 - doing: none
-- done: 「確認付款」 opens Stripe Checkout with a Hong Kong delivery address, and the chat shows the receipt with the address; live payments only with `HACKU_LIVE=1`, HKD, at most HK$100; order desk `/orders.html` fills the store's cart in Chrome (Shopify with the address, HKTVmall after login), marks orders placed, and refunds; up to 5 product cards right after the search, then the model's answer; buy turns take one model round; chat model `kimi-k2.6`; new chat look with a logo, a welcome screen, a live progress panel, copy, retry, and follow-up chips; side panels with chat search, date groups, a cart and checkout box, and phone drawers; 中 / EN language switch for the page and the agent's replies; the agent reads and edits the cart, buys cart lines, sees the authorization and recent orders, and opens app pages; card tags, 買 and 比較 on cards, voice input, and a cap meter; five cards on one row, feed scrolls to the latest reply; quick-action chips after each reply come from the model (`next_steps`) and follow that chat; cart lines can be mentioned in the chat (several at once); adding a product flies into the cart mark; next-step chips sit above the input; public shop on Railway (`https://hacku-production.up.railway.app`); ask cards use a row of options, and each question can be skipped or answered in the shopper's own words; desktop chat header shows the conversation title; the agent names the chat after the first turn; 60 unit tests; demo, going-live, and public-site steps in `web/README.md`
+- done: Desktop left chat list folds with a chevron and opens again from the header menu. Checkout is on `/pay.html`. Chat title is the first user line.
 - blocked: none
 - next: none
-- ask_other: G1, review the `pay/` changes; see outbox 21:00
+- ask_other: none

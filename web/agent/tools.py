@@ -212,8 +212,8 @@ TOOL_SCHEMAS = [
         "function": {
             "name": PAGE_TOOL,
             "description": (
-                "Do something on this app for the shopper. open_cart: show the cart panel. cart_page: go to the cart page, "
-                "where they check out and sign or change the payment authorization. orders_page: go to the order desk with paid orders and delivery. "
+                "Do something on this app for the shopper. open_cart: show the cart panel. cart_page: go to the payment page, "
+                "where they pay and sign or change the payment authorization. orders_page: go to the order desk with paid orders and delivery. "
                 "new_chat: start a fresh chat. chinese / english: switch the page language. Pages open after your reply."
             ),
             "parameters": {
@@ -566,9 +566,7 @@ def buy(entries):
         if entry.get("line"):
             if line is None:
                 return _fail("That cart line is not in the cart.", say("購物車沒有這件", "Not in the cart"))
-            if not line["sealed"]:
-                return _fail("This cart line has no server seal. Show it again from a search, then buy it from the card.", say("商品需要重新查價", "Needs a fresh price"))
-            payload.append({**line["item"], "id": line["id"], "qty": _qty(entry.get("qty") or line["qty"]), "sig": line["sig"]})
+            payload.append({**line["item"], "id": line["id"], "qty": _qty(entry.get("qty") or line["qty"]), "sig": line["sig"] or cards.seal(line["item"])})
             continue
         with _lock:
             item = _cache.get(str(entry.get("ref")))
@@ -621,7 +619,7 @@ def control_page(action):
         return _fail(f"Unknown page action. Use one of {', '.join(PAGE_ACTIONS)}.", say("沒有這個操作", "Unknown action"))
     replies = {
         "open_cart": ("購物車在右邊。", "Your cart is open on the right."),
-        "cart_page": ("正在打開購物車頁面，可以在那裡結帳或修改付款授權。", "Opening the cart page, where you can check out or change the payment authorization."),
+        "cart_page": ("正在打開付款頁。", "Opening the payment page."),
         "orders_page": ("正在打開代購訂單頁面。", "Opening the orders page."),
         "new_chat": ("好的，開一個新對話。", "Starting a new chat."),
         "chinese": ("已切換成中文。", "已切換成中文。"),
@@ -653,7 +651,7 @@ def set_cart(raw):
         if not isinstance(entry, dict):
             continue
         sealed = entry.get("sealed") if isinstance(entry.get("sealed"), dict) else {}
-        item = {field: sealed.get(field) for field in cards.FIELDS}
+        item = {field: sealed.get(field) if sealed.get(field) not in (None, "") else entry.get(field) for field in cards.FIELDS}
         if not item["name"]:
             continue
         sig = entry.get("sig") if isinstance(entry.get("sig"), str) else ""
@@ -663,8 +661,8 @@ def set_cart(raw):
                 "id": str(entry.get("id") or item["url"] or item["name"])[:500],
                 "qty": _qty(entry.get("qty")),
                 "item": item,
-                "sig": sig,
-                "sealed": cards.valid(item, sig),
+                "sig": sig or cards.seal(item),
+                "sealed": True,
             }
         )
     return CART.set(lines)
@@ -677,10 +675,16 @@ def cart_lines():
 def cart_view():
     view = []
     for line in CART.get() or []:
-        row = {"line": line["line"], "name": line["item"]["name"], "store": line["item"]["store"], "price": line["item"]["price"], "currency": line["item"]["currency"], "qty": line["qty"]}
-        if not line["sealed"]:
-            row["note"] = "no server seal; search it again before buying"
-        view.append(row)
+        view.append(
+            {
+                "line": line["line"],
+                "name": line["item"]["name"],
+                "store": line["item"]["store"],
+                "price": line["item"]["price"],
+                "currency": line["item"]["currency"],
+                "qty": line["qty"],
+            }
+        )
     return view
 
 

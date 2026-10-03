@@ -16,8 +16,8 @@
             <img class="logo" src="logo.svg" alt="" width="30" height="30" />
             <span class="brand-text">
               <h1 data-i18n="title">購物助理</h1>
-              <span class="brand-sub" data-i18n="brandSub">AI 比價・代購</span>
-            </span>
+            <span class="brand-sub" data-i18n="brandSub">AI 比價・代購</span>
+          </span>
           </a>
           <button type="button" class="icon-btn drawer-close" data-close data-i18n-attr="aria-label:close" aria-label="關閉">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"></path></svg>
@@ -60,6 +60,12 @@
       </aside>
       <main class="chat">
         <header class="chat-header">
+          <button type="button" id="fold-chats" class="icon-btn fold-chats" data-i18n-attr="aria-label:foldChats,title:foldChats" aria-label="收起對話列表" title="收起對話列表">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <rect x="4" y="5" width="16" height="14" rx="2" fill="none" stroke="currentColor" stroke-width="2"></rect>
+              <path d="M10 5v14M8 12H5.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"></path>
+            </svg>
+          </button>
           <button type="button" id="open-chats" class="icon-btn menu-btn" data-i18n-attr="aria-label:chatHistory" aria-label="對話紀錄" aria-controls="side-chats">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h10" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"></path></svg>
           </button>
@@ -76,7 +82,7 @@
                 <path d="M12 5v14M5 12h14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"></path>
               </svg>
             </button>
-            <a id="cart-link" class="pill" href="cart.html"><span data-i18n="cart">購物車</span><span id="cart-count"></span></a>
+            <a id="cart-link" class="pill" href="pay.html"><span data-i18n="cart">購物車</span><span id="cart-count"></span></a>
           </div>
         </header>
         <div class="feed">
@@ -128,7 +134,7 @@
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"></path></svg>
           </button>
         </div>
-        <a id="side-mandate" class="side-mandate" href="cart.html" hidden></a>
+        <a id="side-mandate" class="side-mandate" href="pay.html" hidden></a>
         <div id="side-cart" class="side-cart"></div>
         <div id="side-pay-box" class="side-pay" hidden>
           <div class="sum-row">
@@ -139,8 +145,8 @@
             <div class="cap-bar"><span></span></div>
             <p class="cap-text"></p>
           </div>
-          <a id="side-pay" class="checkout-btn" href="cart.html">
-            <span data-i18n="checkout">去結帳</span>
+          <a id="side-pay" class="checkout-btn" href="pay.html">
+            <span data-i18n="checkout">去付款</span>
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"></path></svg>
           </a>
           <p class="pay-note">

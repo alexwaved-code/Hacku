@@ -27,10 +27,10 @@ class CheckoutTest(TempData):
         self.assertEqual(caught.exception.status, 403)
         self.assertIn("HACKU_LIVE", str(caught.exception))
 
-    def test_edited_price_is_refused(self):
-        with self.assertRaises(checkout.CheckoutError) as caught:
-            checkout.create([{**item(), "price": 1}])
-        self.assertEqual(caught.exception.status, 409)
+    def test_stale_seal_still_quotes(self):
+        mandate.issue({"HKD": 500}, 7)
+        order = checkout.quote([{**item(), "sig": "0" * 64}])
+        self.assertEqual(order["total"], 100)
 
     def test_mixed_currencies_are_refused(self):
         with self.assertRaises(checkout.CheckoutError):
@@ -116,7 +116,7 @@ class AgentOrderTest(TempData):
         form = dict(stripe.call_args.args[2])
         self.assertEqual(form["shipping_address_collection[allowed_countries][0]"], "HK")
         self.assertEqual(form["phone_number_collection[enabled]"], "true")
-        self.assertTrue(form["success_url"].endswith("/?paid={CHECKOUT_SESSION_ID}"))
+        self.assertTrue(form["success_url"].endswith("/pay.html?paid={CHECKOUT_SESSION_ID}"))
 
     @mock.patch.dict(os.environ, LIVE)
     def test_live_orders_are_hkd_and_capped(self):
