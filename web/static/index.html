@@ -63,10 +63,9 @@
           <button type="button" id="open-chats" class="icon-btn menu-btn" data-i18n-attr="aria-label:chatHistory" aria-label="對話紀錄" aria-controls="side-chats">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h10" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"></path></svg>
           </button>
-          <a class="brand narrow-title" href="./" data-i18n-attr="aria-label:title" aria-label="購物助理">
-            <img class="logo" src="logo.svg" alt="" width="26" height="26" />
-            <h1 data-i18n="title">購物助理</h1>
-          </a>
+          <div class="chat-heading">
+            <h1 id="chat-title">新對話</h1>
+          </div>
           <div class="header-actions">
             <div class="lang-switch lang-narrow" role="group" data-i18n-attr="aria-label:language" aria-label="語言">
               <button type="button" data-lang="zh" aria-pressed="true">中</button>
@@ -89,6 +88,7 @@
           </button>
         </div>
         <footer class="dock">
+          <div id="quick" class="quick"></div>
           <form id="composer" class="composer">
             <label class="sr-only" for="message" data-i18n="message">訊息</label>
             <input id="message" name="message" type="text" autocomplete="off" placeholder="想買什麼，或想問什麼？" />
@@ -107,7 +107,6 @@
               <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="7" width="10" height="10" rx="2" fill="currentColor"></rect></svg>
             </button>
           </form>
-          <div id="dock-quick" class="quick dock-quick"></div>
         </footer>
       </main>
       <aside class="side cart-panel" id="side-cart-panel" data-i18n-attr="aria-label:cart" aria-label="購物車">

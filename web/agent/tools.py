@@ -20,7 +20,9 @@ LINK_WAIT = 0.5
 LINK_REFRESH = 8
 CARD_TOOL = "show_products"
 ASK_TOOL = "ask_user"
+NEXT_TOOL = "next_steps"
 BUY_TOOL = "buy"
+MAX_NEXT = 5
 CART_TOOL = "update_cart"
 PAGE_TOOL = "control_page"
 PAGE_ACTIONS = ("open_cart", "cart_page", "orders_page", "new_chat", "chinese", "english")
@@ -253,6 +255,37 @@ TOOL_SCHEMAS = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": NEXT_TOOL,
+            "description": (
+                "Show 3 to 5 next-step chips under the input. Call this in the same round as your final reply. "
+                "Each chip is a short label plus the exact next message the shopper will send. "
+                "Base them on this chat: the last request, the cards just shown, the cart, or a trade-off not yet decided. "
+                "Do not invent generic starters that ignore this chat."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "actions": {
+                        "type": "array",
+                        "minItems": 3,
+                        "maxItems": MAX_NEXT,
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "label": {"type": "string", "description": "2 to 8 words on the chip."},
+                                "prompt": {"type": "string", "description": "The message sent when the shopper taps the chip."},
+                            },
+                            "required": ["label", "prompt"],
+                        },
+                    }
+                },
+                "required": ["actions"],
+            },
+        },
+    },
 ]
 
 _cache = OrderedDict()
@@ -296,6 +329,8 @@ def tool_label(name, args):
         return say("挑出最合適的商品", "Picking the best matches")
     if name == ASK_TOOL:
         return say("想先問你幾個問題", "A few quick questions")
+    if name == NEXT_TOOL:
+        return say("下一步", "Next steps")
     if name == BUY_TOOL:
         return say("準備訂單", "Preparing the order")
     return name
@@ -324,6 +359,23 @@ def clean_questions(args):
     return questions
 
 
+def clean_actions(args):
+    raw = args.get("actions") if isinstance(args, dict) else None
+    if not isinstance(raw, list):
+        return []
+    actions = []
+    seen = set()
+    for item in raw[:MAX_NEXT]:
+        if not isinstance(item, dict):
+            continue
+        label = _short(item.get("label") or item.get("text"), 24)
+        prompt = _short(item.get("prompt") or item.get("message") or label, 80)
+        if label and prompt and prompt not in seen:
+            seen.add(prompt)
+            actions.append({"label": label, "prompt": prompt})
+    return actions
+
+
 def _short(value, limit):
     return re.sub(r"\s+", " ", str(value or "")).strip()[:limit] if isinstance(value, str) else ""
 
@@ -349,6 +401,9 @@ def run_tool(name, args):
             return control_page(str(args.get("action") or ""))
         if name == CART_TOOL:
             return update_cart(args)
+        if name == NEXT_TOOL:
+            actions = clean_actions(args)
+            return {"ok": True, "summary": say(f"{len(actions)} 個下一步", f"{len(actions)} next steps"), "model": {"actions": actions}, "ui": {"kind": "next", "actions": actions}}
     except web.FetchError as error:
         return _fail(str(error), _short_error(str(error)))
     except Exception as error:

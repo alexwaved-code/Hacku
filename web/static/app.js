@@ -15,6 +15,7 @@ const els = {
   sideChats: $("#side-chats"),
   sideCartPanel: $("#side-cart-panel"),
   openChats: $("#open-chats"),
+  chatTitle: $("#chat-title"),
   scrim: $(".scrim"),
 };
 const narrowScreen = window.matchMedia("(max-width: 900px)");
@@ -37,8 +38,9 @@ const cardPainters = new Set();
 let cartSeen = null;
 let chatsSeen = null;
 let lastMandate = null;
-let lastOrders = [];
+let lastQuick = [];
 const comparing = new Map();
+const mentions = new Map();
 const MAX_COMPARE = 3;
 const NUMERALS = { 一: 1, 二: 2, 兩: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9, 十: 10, first: 1, second: 2, third: 3, fourth: 4, fifth: 5 };
 const REF_ZH = /第\s*([一二兩三四五六七八九十]|\d{1,2})\s*(?:個|款|件|張|項)/;
@@ -48,13 +50,13 @@ const PICK_WORDS = /最推薦|推薦|首選|最適合|建議|recommend|best (?:p
 els.form.addEventListener("submit", (event) => {
   event.preventDefault();
   const text = els.input.value;
-  if (!text.trim() || state.busy) return;
+  if (state.busy || (!text.trim() && !mentions.size)) return;
   els.input.value = "";
   els.form.classList.remove("has-text");
-  send(text);
+  send(text, { withMentions: true });
 });
 els.stop.addEventListener("click", () => state.controller?.abort());
-els.input.addEventListener("input", () => els.form.classList.toggle("has-text", !!els.input.value.trim()));
+els.input.addEventListener("input", syncComposer);
 els.newChat.forEach((button) => button.addEventListener("click", resetChat));
 els.list.addEventListener(
   "scroll",
@@ -214,6 +216,7 @@ function openCompare() {
   const column = (product) => {
     const add = h("button", { type: "button", class: "pill compare-add" }, cartIcon(), t("addCart"));
     add.addEventListener("click", () => {
+      flyToCart(add.closest(".compare-col")?.querySelector(".compare-pic") || add, product);
       HackuCart.add(product);
       updateCartCount();
       add.classList.add("done");
@@ -286,46 +289,25 @@ function actionChip(icon, label, prompt) {
   return h("button", { type: "button", class: "quick-chip", onclick: () => send(prompt) }, icon, h("span", {}, label));
 }
 
-function nextActions(extra = []) {
-  const items = [];
+function setQuick(actions) {
   const seen = new Set();
-  const add = (icon, label, prompt) => {
-    if (!label || !prompt || seen.has(prompt) || items.length >= 5) return;
+  lastQuick = [];
+  for (const item of Array.isArray(actions) ? actions : []) {
+    const label = String(item.label || "").trim().slice(0, 24);
+    const prompt = String(item.prompt || item.label || "").trim().slice(0, 80);
+    if (!label || !prompt || seen.has(prompt)) continue;
     seen.add(prompt);
-    items.push(actionChip(icon, label, prompt));
-  };
-  for (const [label, prompt] of extra) add(null, label, prompt);
-  const count = HackuCart.count();
-  if (count) add(cartIcon(), t("quickCheckout", count), t("quickCheckoutAsk"));
-  const names = [];
-  for (const order of lastOrders) {
-    const name = order.items?.[0]?.name;
-    if (name && !names.includes(name)) names.push(name);
+    lastQuick.push({ label, prompt });
+    if (lastQuick.length >= 5) break;
   }
-  for (const name of names.slice(0, 2)) {
-    add(lineIcon("M4 12a8 8 0 0 1 14-5.3M20 4v4h-4M20 12a8 8 0 0 1-14 5.3M4 20v-4h4"), t("reorder", name.length > 22 ? `${name.slice(0, 22)}…` : name), t("reorderAsk", name));
-  }
-  if (lastOrders.length) add(lineIcon("M4 8l8-4 8 4v8l-8 4-8-4V8zM4 8l8 4 8-4M12 12v8"), t("quickOrders"), t("quickOrders"));
-  for (const [title, prompt] of t("examples")) add(null, title, prompt);
-  return items;
+  renderQuick();
 }
 
-function renderDockQuick() {
-  const box = document.querySelector("#dock-quick");
+function renderQuick() {
+  const box = document.querySelector("#quick");
   if (!box) return;
-  box.replaceChildren(h("div", { class: "quick-row" }, nextActions()));
-}
-
-function loadOrders() {
-  return fetch("/api/orders")
-    .then((response) => (response.ok ? response.json() : null))
-    .then((data) => {
-      lastOrders = Array.isArray(data?.orders) ? data.orders : [];
-      renderDockQuick();
-    })
-    .catch(() => {
-      renderDockQuick();
-    });
+  if (!lastQuick.length) box.replaceChildren();
+  else box.replaceChildren(h("div", { class: "quick-row" }, lastQuick.map((item) => actionChip(null, item.label, item.prompt))));
 }
 
 function setupVoice() {
@@ -375,15 +357,182 @@ function cartForAgent() {
 }
 
 function applyCartOps(ops) {
+  const added = [];
   for (const op of Array.isArray(ops) ? ops : []) {
-    if (op.op === "add" && op.card) HackuCart.setQty(op.card, HackuCart.qtyOf(op.card) + (Number(op.qty) || 1));
-    else if (op.op === "remove") HackuCart.remove(op.id);
+    if (op.op === "add" && op.card) {
+      added.push(op.card);
+      HackuCart.setQty(op.card, HackuCart.qtyOf(op.card) + (Number(op.qty) || 1));
+    } else if (op.op === "remove") HackuCart.remove(op.id);
     else if (op.op === "set") {
       const item = HackuCart.load().find((entry) => entry.id === op.id);
       if (item) HackuCart.changeQty(op.id, (Number(op.qty) || 1) - (Number(item.qty) || 1));
     }
   }
+  added.forEach((card, index) => setTimeout(() => flyToCart(cardSource(card), card), index * 90));
   updateCartCount();
+}
+
+function syncComposer() {
+  els.form.classList.toggle("has-text", !!(els.input.value.trim() || mentions.size));
+}
+
+function cartLineOf(id) {
+  const index = HackuCart.load().findIndex((item) => item.id === id);
+  return index >= 0 ? `c${index + 1}` : "";
+}
+
+function shortName(name) {
+  const text = String(name || "").trim();
+  return text.length > 16 ? `${text.slice(0, 16)}…` : text;
+}
+
+function mentionPrompt(extra) {
+  const parts = [...mentions.values()]
+    .map((item) => {
+      const line = cartLineOf(item.id);
+      const name = item.name || "";
+      if (!name) return "";
+      return line ? `${line}「${name}」` : `「${name}」`;
+    })
+    .filter(Boolean);
+  const listed = parts.join(t("sep"));
+  const typed = String(extra || "").trim();
+  if (!parts.length) return typed;
+  return typed ? t("mentionWithText", { listed, text: typed }) : t("mentionAsk", listed);
+}
+
+function toggleMention(item) {
+  if (!item?.id) return;
+  if (mentions.has(item.id)) mentions.delete(item.id);
+  else mentions.set(item.id, item);
+  renderMentions();
+  paintMentionRows();
+}
+
+function clearMentions() {
+  mentions.clear();
+  renderMentions();
+  paintMentionRows();
+}
+
+function mentionBar() {
+  let bar = document.querySelector("#mention-bar");
+  if (bar) return bar;
+  bar = h("div", { id: "mention-bar", class: "mention-bar", hidden: true });
+  els.form.before(bar);
+  return bar;
+}
+
+function renderMentions() {
+  const alive = new Set(HackuCart.load().map((item) => item.id));
+  for (const id of [...mentions.keys()]) if (!alive.has(id)) mentions.delete(id);
+  const bar = mentionBar();
+  const items = [...mentions.values()];
+  bar.hidden = !items.length;
+  if (!items.length) {
+    bar.replaceChildren();
+    syncComposer();
+    return;
+  }
+  const ask = h("button", { type: "button", class: "mention-ask" }, t("mentionSend"));
+  ask.addEventListener("click", () => {
+    closeDrawers();
+    send("", { withMentions: true });
+  });
+  const clear = h("button", { type: "button", class: "mention-clear" }, t("mentionClear"));
+  clear.addEventListener("click", clearMentions);
+  bar.replaceChildren(
+    h(
+      "div",
+      { class: "mention-chips" },
+      items.map((item) => {
+        const chip = h(
+          "button",
+          { type: "button", class: "mention-chip", title: item.name },
+          item.image ? h("img", { src: item.image, alt: "", referrerpolicy: "no-referrer", onerror: hideBrokenImage }) : null,
+          h("span", {}, shortName(item.name)),
+          h("span", { class: "mention-x", "aria-hidden": "true" }, "×")
+        );
+        chip.addEventListener("click", () => toggleMention(item));
+        return chip;
+      })
+    ),
+    ask,
+    clear
+  );
+  syncComposer();
+}
+
+function paintMentionRows() {
+  document.querySelectorAll(".side-cart-item[data-id]").forEach((row) => {
+    const on = mentions.has(row.dataset.id);
+    row.classList.toggle("mentioned", on);
+    const btn = row.querySelector(".mention-btn");
+    if (btn) {
+      btn.classList.toggle("on", on);
+      btn.setAttribute("aria-pressed", String(on));
+    }
+  });
+}
+
+function cardSource(product) {
+  const key = HackuCart.idOf(product);
+  const wrap = [...document.querySelectorAll(".card-wrap[data-key]")].find((node) => node.dataset.key === key);
+  return wrap?.querySelector(".pic") || wrap || document.querySelector(".turn:last-child");
+}
+
+function cartTarget() {
+  const mark = document.querySelector(".cart-mark");
+  const box = mark?.getBoundingClientRect();
+  if (box && box.width > 2 && box.bottom > 0 && box.top < window.innerHeight && box.left < window.innerWidth) return mark;
+  return document.querySelector("#cart-link") || mark;
+}
+
+function pulseCart() {
+  for (const node of [document.querySelector(".cart-mark"), document.querySelector("#side-count"), document.querySelector("#cart-link")]) {
+    if (!node) continue;
+    node.classList.remove("pulse");
+    void node.offsetWidth;
+    node.classList.add("pulse");
+  }
+}
+
+function flyToCart(source, product) {
+  const target = cartTarget();
+  const from = source?.getBoundingClientRect?.();
+  const to = target?.getBoundingClientRect?.();
+  if (!from || !to || from.width < 2 || to.width < 2 || window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    pulseCart();
+    return;
+  }
+  const ghost = document.createElement("div");
+  ghost.className = "cart-fly";
+  ghost.setAttribute("aria-hidden", "true");
+  if (product?.image) {
+    const pic = document.createElement("img");
+    pic.src = product.image;
+    pic.alt = "";
+    pic.referrerPolicy = "no-referrer";
+    ghost.append(pic);
+  } else ghost.append(cartIcon());
+  const size = Math.max(36, Math.min(56, from.width, from.height));
+  const x0 = from.left + from.width / 2;
+  const y0 = from.top + from.height / 2;
+  ghost.style.left = `${x0 - size / 2}px`;
+  ghost.style.top = `${y0 - size / 2}px`;
+  ghost.style.width = `${size}px`;
+  ghost.style.height = `${size}px`;
+  ghost.style.setProperty("--dx", `${to.left + to.width / 2 - x0}px`);
+  ghost.style.setProperty("--dy", `${to.top + to.height / 2 - y0}px`);
+  document.body.append(ghost);
+  ghost.addEventListener(
+    "animationend",
+    () => {
+      ghost.remove();
+      pulseCart();
+    },
+    { once: true }
+  );
 }
 
 function setLanguage(lang) {
@@ -391,6 +540,7 @@ function setLanguage(lang) {
   HackuText.set(lang);
   if (state.busy) {
     els.input.placeholder = t(state.pendingAsk ? "askPlaceholder" : "placeholder");
+    paintChatTitle();
   } else {
     const top = els.list.scrollTop;
     restoreChat();
@@ -401,16 +551,22 @@ function setLanguage(lang) {
   renderMandate(lastMandate);
   document.querySelector("#compare-bar")?.remove();
   if (comparing.size) syncCompare();
-  renderDockQuick();
 }
 
 /* ---------- Sending ---------- */
 
-function send(text) {
-  text = String(text || "").trim();
-  if (!text || state.busy) return;
-  const reply = takePendingAsk({ user_reply: text });
-  runTurn(text, [reply || { role: "user", content: text }]);
+function send(text, opts = {}) {
+  if (state.busy) return;
+  let message = String(text || "").trim();
+  if (opts.withMentions) message = mentionPrompt(message);
+  if (!message) return;
+  if (opts.withMentions) {
+    mentions.clear();
+    renderMentions();
+    paintMentionRows();
+  }
+  const reply = takePendingAsk({ user_reply: message });
+  runTurn(message, [reply || { role: "user", content: message }]);
 }
 
 function answerAsk(payload, display) {
@@ -563,6 +719,8 @@ async function streamChat(controller, turn) {
         else if (event.type === "cards") turn.showCards(event.items, true);
         else if (event.type === "phase") turn.phase(event.phase);
         else if (event.type === "ask") turn.ask(event);
+        else if (event.type === "next") setQuick(event.actions);
+        else if (event.type === "title") applyAgentTitle(event.text);
         else if (event.type === "error") throw new Error(event.message || t("agentError"));
         else if (event.type === "done") added = Array.isArray(event.messages) ? event.messages : [];
       }
@@ -594,7 +752,6 @@ function updateCartCount() {
     else cardPainters.delete(painter);
   }
   renderSideCart();
-  renderDockQuick();
 }
 
 function renderSideCart() {
@@ -610,13 +767,7 @@ function renderSideCart() {
     badge.hidden = !count;
     badge.textContent = String(count);
   }
-  if (grew) {
-    for (const node of [document.querySelector(".cart-mark"), badge]) {
-      node?.classList.remove("pulse");
-      void node?.offsetWidth;
-      node?.classList.add("pulse");
-    }
-  }
+  if (grew) pulseCart();
   els.sideCart.replaceChildren();
   if (!items.length) {
     els.sideCart.append(
@@ -629,12 +780,14 @@ function renderSideCart() {
       )
     );
     renderSideTotal(items);
+    renderMentions();
     return;
   }
   const list = h("ul", { class: "side-cart-list" });
   for (const item of items) list.append(sideCartItem(item, fresh.includes(item.id)));
   els.sideCart.append(list);
   renderSideTotal(items);
+  renderMentions();
 }
 
 function sideCartItem(item, fresh) {
@@ -646,7 +799,23 @@ function sideCartItem(item, fresh) {
   const name = item.url
     ? h("a", { class: "side-cart-name", href: item.url, target: "_blank", rel: "noopener noreferrer", title: item.name }, item.name)
     : h("p", { class: "side-cart-name", title: item.name }, item.name);
-  const row = h("li", { class: fresh ? "side-cart-item fresh" : "side-cart-item" });
+  const row = h("li", {
+    class: `${fresh ? "side-cart-item fresh" : "side-cart-item"}${mentions.has(item.id) ? " mentioned" : ""}`,
+    "data-id": item.id,
+  });
+  const mention = h(
+    "button",
+    {
+      type: "button",
+      class: mentions.has(item.id) ? "mention-btn on" : "mention-btn",
+      title: t("mentionTitle"),
+      "aria-label": t("mentionTitle"),
+      "aria-pressed": String(mentions.has(item.id)),
+    },
+    lineIcon("M5 6h14v9H8l-3 3V6z"),
+    h("span", {}, t("mention"))
+  );
+  mention.addEventListener("click", () => toggleMention(item));
   const change = (delta) => {
     if (qty + delta < 1) {
       row.classList.add("leaving");
@@ -672,7 +841,7 @@ function sideCartItem(item, fresh) {
     h(
       "div",
       { class: "side-cart-body" },
-      name,
+      h("div", { class: "side-cart-top" }, name, mention),
       h("p", { class: "side-cart-meta" }, item.store || t("store")),
       h(
         "div",
@@ -839,7 +1008,10 @@ function resetChat() {
   els.input.value = "";
   sessionStorage.setItem(CURRENT_KEY, crypto.randomUUID());
   sessionStorage.removeItem(CHAT_KEY);
+  setQuick([]);
+  clearMentions();
   els.list.replaceChildren(welcomeItem());
+  paintChatTitle(t("newChat"));
   renderChatList();
   closeDrawers();
   els.input.focus();
@@ -982,6 +1154,7 @@ function startRename(id, button) {
     if (title) {
       const chats = loadChats().map((item) => (item.id === id ? { ...item, title, renamed: true } : item));
       localStorage.setItem(CHATS_KEY, JSON.stringify(chats));
+      if (id === currentChatId()) paintChatTitle(title);
     }
     renderChatList();
   };
@@ -1013,8 +1186,9 @@ function openChat(id) {
   sessionStorage.setItem(CURRENT_KEY, id);
   sessionStorage.setItem(
     CHAT_KEY,
-    JSON.stringify({ thread: chat.thread || [], view: chat.view || [], openAsk: chat.openAsk || null })
+    JSON.stringify({ thread: chat.thread || [], view: chat.view || [], openAsk: chat.openAsk || null, next: chat.next || [] })
   );
+  clearMentions();
   restoreChat();
   renderChatList();
 }
@@ -1025,7 +1199,9 @@ function restoreChat() {
   state.openAsk = null;
   els.input.placeholder = t("placeholder");
   if (!saved) {
+    setQuick([]);
     els.list.replaceChildren(welcomeItem());
+    paintChatTitle();
     return;
   }
   state.thread = Array.isArray(saved.thread) ? saved.thread : [];
@@ -1044,6 +1220,8 @@ function restoreChat() {
     state.openAsk = saved.openAsk;
     els.input.placeholder = t("askPlaceholder");
   }
+  setQuick(saved.next);
+  paintChatTitle();
 }
 
 function readChat() {
@@ -1056,25 +1234,87 @@ function readChat() {
   }
 }
 
+function cleanTitle(text) {
+  return String(text || "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/^["'`「」『』]+|["'`「」『』]+$/g, "")
+    .replace(/[。．.!?！？]+$/g, "")
+    .slice(0, 42);
+}
+
+function chatHeading() {
+  const chat = loadChats().find((item) => item.id === currentChatId());
+  return (chat?.title || "").trim() || t("newChat");
+}
+
+function paintChatTitle(title) {
+  const text = cleanTitle(title) || chatHeading();
+  if (els.chatTitle) {
+    els.chatTitle.textContent = text;
+    els.chatTitle.title = text;
+  }
+  document.title = text === t("newChat") ? t("title") : `${text} · ${t("title")}`;
+}
+
+function applyAgentTitle(text) {
+  const title = cleanTitle(text);
+  if (!title) return;
+  const id = currentChatId();
+  const chats = loadChats();
+  const previous = chats.find((item) => item.id === id);
+  if (previous?.renamed) return;
+  const rest = chats.filter((item) => item.id !== id);
+  try {
+    localStorage.setItem(
+      CHATS_KEY,
+      JSON.stringify(
+        [
+          {
+            id,
+            title,
+            named: true,
+            renamed: false,
+            pinned: !!previous?.pinned,
+            updated: Date.now(),
+            thread: previous?.thread ?? state.thread,
+            view: previous?.view ?? [],
+            openAsk: previous?.openAsk ?? state.openAsk ?? null,
+            next: previous?.next ?? lastQuick,
+          },
+          ...rest,
+        ].slice(0, 30)
+      )
+    );
+  } catch {
+    /* The conversation list could not be stored. */
+  }
+  paintChatTitle(title);
+  renderChatList();
+}
+
 function saveChat() {
   const view = snapshotView();
   const payload = {
     thread: state.thread,
     view,
     openAsk: state.openAsk || null,
+    next: lastQuick,
   };
   try {
     sessionStorage.setItem(CHAT_KEY, JSON.stringify(payload));
   } catch {
     /* The browser refused to store the chat. The cart still works. */
   }
-  const title = (view.find((entry) => entry.kind === "user")?.text || "").trim();
-  if (!title) return;
+  const spoken = (view.find((entry) => entry.kind === "user")?.text || "").trim();
+  if (!spoken) return;
   const previous = loadChats().find((chat) => chat.id === currentChatId());
   const chats = loadChats().filter((chat) => chat.id !== currentChatId());
+  const kept = previous?.renamed || previous?.named;
   chats.unshift({
     id: currentChatId(),
-    title: previous?.renamed ? previous.title : title.slice(0, 42),
+    title: kept && previous.title ? previous.title : previous?.title || t("newChat"),
+    named: !!previous?.named,
     renamed: !!previous?.renamed,
     pinned: !!previous?.pinned,
     updated: Date.now(),
@@ -1234,7 +1474,7 @@ function createTurn() {
       clearSkeleton();
       markPick(item, item._markdown);
       activity.finish(t("done"));
-      item.querySelector(".ask button")?.focus({ preventScroll: true });
+      item.querySelector(".ask-opt")?.focus({ preventScroll: true });
       scrollToEnd(true);
     },
     addActions(onRetry) {
@@ -1254,9 +1494,14 @@ function createTurn() {
       const retry = h("button", { type: "button", class: "act-btn act-retry", title: t("regenerate") }, retryIcon(), t("regenerate"));
       retry.addEventListener("click", onRetry);
       if (said) item.append(h("div", { class: "turn-actions" }, copy, retry));
-      if (!state.pendingAsk && item._products?.length) {
-        const chips = nextActions(t("followUps").map((prompt) => [prompt, prompt]));
-        if (chips.length) item.append(h("div", { class: "quick turn-quick" }, h("div", { class: "quick-row" }, chips)));
+      if (!state.pendingAsk && lastQuick.length) {
+        item.append(
+          h(
+            "div",
+            { class: "quick turn-quick" },
+            h("div", { class: "quick-row" }, lastQuick.map((entry) => actionChip(null, entry.label, entry.prompt)))
+          )
+        );
       }
       scrollToEnd(true);
     },
@@ -1436,6 +1681,7 @@ function productCard(product) {
   add.addEventListener("click", (event) => {
     event.preventDefault();
     event.stopPropagation();
+    flyToCart(card.querySelector(".pic") || add, product);
     HackuCart.add(product);
     add.classList.remove("bounce");
     void add.offsetWidth;
@@ -1468,6 +1714,7 @@ function productCard(product) {
     h("span", {}, t("compare"))
   );
   const wrap = h("div", { class: comparing.has(key) ? "card-wrap comparing" : "card-wrap", "data-key": key }, card, h("div", { class: "card-tools" }, pick, buy));
+  if (product.price != null && !Number.isNaN(Number(product.price))) wrap.dataset.price = String(product.price);
   buy.addEventListener("click", (event) => {
     event.preventDefault();
     event.stopPropagation();
@@ -1741,80 +1988,141 @@ async function finishStripeReturn() {
 }
 
 function askCard(questions) {
+  questions = Array.isArray(questions) ? questions : [];
   const picked = questions.map(() => new Set());
-  const note = h("input", { class: "ask-note", type: "text", placeholder: t("otherThoughts"), "aria-label": t("otherThoughtsLabel") });
-  const submit = h("button", { type: "button", class: "ask-send", disabled: true }, t("send"));
-  const skip = h("button", { type: "button", class: "pill" }, t("skip"));
-  const quick = questions.length === 1 && !questions[0].multiple;
+  const skipped = questions.map(() => false);
+  const others = [];
+  const skips = [];
+  const groups = [];
+  const submit = h("button", { type: "button", class: "ask-send", disabled: true }, t("askSend"));
+  const status = h("p", { class: "ask-status" }, questions.length > 1 ? t("askQuestions", questions.length) : "");
 
-  const ready = () => picked.every((set) => set.size > 0) || note.value.trim().length > 0;
+  const otherOf = (index) => (others[index]?.value || "").trim();
+  const ready = () => questions.every((_, index) => skipped[index] || picked[index].size > 0 || otherOf(index));
   const refresh = () => {
     submit.disabled = !ready();
   };
+  const clearSkip = (index) => {
+    skipped[index] = false;
+    skips[index]?.setAttribute("aria-pressed", "false");
+    groups[index]?.classList.remove("skipped");
+  };
 
-  const groups = questions.map((question, index) => {
-    const buttons = question.options.map((label) =>
-      h("button", { type: "button", class: "opt", "aria-pressed": "false" }, label)
+  questions.forEach((question, index) => {
+    const multiple = Boolean(question.multiple);
+    const other = h("input", {
+      class: "ask-other",
+      type: "text",
+      placeholder: t("otherThoughts"),
+      "aria-label": `${question.prompt} · ${t("otherThoughtsLabel")}`,
+    });
+    const skip = h("button", { type: "button", class: "ask-skip", "aria-pressed": "false" }, t("skip"));
+    const buttons = (question.options || []).map((label) =>
+      h("button", { type: "button", class: "ask-opt", "aria-pressed": "false", "data-label": label }, label)
     );
     buttons.forEach((button) =>
       button.addEventListener("click", () => {
         const set = picked[index];
-        const label = button.textContent;
-        if (question.multiple) {
+        const label = button.dataset.label;
+        clearSkip(index);
+        if (multiple) {
           set.has(label) ? set.delete(label) : set.add(label);
         } else {
           set.clear();
           set.add(label);
         }
-        buttons.forEach((b) => b.setAttribute("aria-pressed", String(set.has(b.textContent))));
+        buttons.forEach((item) => item.setAttribute("aria-pressed", String(set.has(item.dataset.label))));
         refresh();
-        if (quick) submitAnswers();
       })
     );
-    return h(
+    other.addEventListener("input", () => {
+      if (otherOf(index)) clearSkip(index);
+      refresh();
+    });
+    other.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" && !event.isComposing) {
+        event.preventDefault();
+        submitAnswers();
+      }
+    });
+    skip.addEventListener("click", () => {
+      skipped[index] = !skipped[index];
+      if (skipped[index]) {
+        picked[index].clear();
+        other.value = "";
+        buttons.forEach((button) => button.setAttribute("aria-pressed", "false"));
+      }
+      skip.setAttribute("aria-pressed", String(skipped[index]));
+      groups[index].classList.toggle("skipped", skipped[index]);
+      refresh();
+    });
+    others[index] = other;
+    skips[index] = skip;
+    const titleId = `ask-q-${index}-${Math.random().toString(36).slice(2, 8)}`;
+    groups[index] = h(
       "fieldset",
-      { class: "q" },
-      h("legend", {}, question.prompt, question.multiple ? h("span", { class: "hint" }, t("pickAny")) : null),
-      h("div", { class: "opts" }, buttons)
+      { class: `ask-q${multiple ? " multi" : ""}` },
+      h(
+        "div",
+        { class: "ask-prompt", id: titleId },
+        questions.length > 1 ? h("span", { class: "ask-num" }, String(index + 1)) : null,
+        h("span", { class: "ask-title" }, question.prompt),
+        multiple ? h("span", { class: "ask-mode" }, t("pickAny")) : null
+      ),
+      h("div", { class: "ask-opts", role: "group", "aria-labelledby": titleId }, buttons),
+      h("div", { class: "ask-more" }, other, skip)
     );
   });
+
+  const collect = () =>
+    questions.map((question, index) => {
+      const other = otherOf(index);
+      if (skipped[index]) return { question: question.prompt, skipped: true };
+      const chosen = [...picked[index]];
+      if (other) return chosen.length ? { question: question.prompt, chosen, other } : { question: question.prompt, other };
+      return { question: question.prompt, chosen };
+    });
 
   const submitAnswers = () => {
     if (!ready()) return;
-    const answers = questions
-      .map((question, index) => ({ question: question.prompt, chosen: [...picked[index]] }))
-      .filter((answer) => answer.chosen.length);
-    const extra = note.value.trim();
-    const payload = extra ? { answers, note: extra } : { answers };
-    const display = [...answers.map((answer) => answer.chosen.join(t("sep"))), extra].filter(Boolean).join(" · ");
-    answerAsk(payload, display);
+    const answers = collect();
+    if (answers.every((answer) => answer.skipped)) {
+      answerAsk({ skipped: true }, t("skip"));
+      return;
+    }
+    const display = answers
+      .map((answer) => (answer.skipped ? t("skipped") : [...(answer.chosen || []), answer.other].filter(Boolean).join(t("sep"))))
+      .filter(Boolean)
+      .join(" · ");
+    answerAsk({ answers }, display);
   };
 
-  note.addEventListener("input", refresh);
-  note.addEventListener("keydown", (event) => {
-    if (event.key === "Enter" && !event.isComposing) {
-      event.preventDefault();
-      submitAnswers();
-    }
-  });
   submit.addEventListener("click", submitAnswers);
-  skip.addEventListener("click", () => answerAsk({ skipped: true }, t("skip")));
 
-  if (quick) groups[0].querySelector(".opts").append(skip);
   const el = h(
     "div",
-    { class: "ask" },
-    groups,
-    quick ? null : h("div", { class: "ask-foot" }, note, h("div", { class: "ask-actions" }, submit, skip))
+    { class: "ask", role: "form", "aria-label": t("needChoice") },
+    h("header", { class: "ask-head" }, h("p", { class: "ask-kicker" }, t("needChoice")), status),
+    h("div", { class: "ask-body" }, groups),
+    h("footer", { class: "ask-foot" }, submit)
   );
 
   const close = (payload) => {
     el.classList.add("closed");
+    if (payload.skipped) el.classList.add("skipped");
+    else if (payload.user_reply) el.classList.add("typed");
+    status.textContent = payload.skipped ? t("skipped") : payload.user_reply ? t("typedInstead") : t("askAnswered");
+    groups.forEach((group, index) => {
+      if (payload.skipped || skipped[index]) {
+        group.classList.add("skipped");
+        group.append(h("p", { class: "ask-result" }, t("skipped")));
+      } else if (otherOf(index)) {
+        group.append(h("p", { class: "ask-result" }, otherOf(index)));
+      }
+    });
     el.querySelectorAll("button, input").forEach((control) => {
       control.disabled = true;
     });
-    if (payload.skipped) el.append(h("p", { class: "note" }, t("skipped")));
-    else if (payload.user_reply) el.append(h("p", { class: "note" }, t("typedInstead")));
   };
 
   return { el, close };
@@ -2014,4 +2322,4 @@ restoreChat();
 saveChat();
 renderChatList();
 finishStripeReturn();
-loadOrders();
+renderQuick();

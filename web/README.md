@@ -59,6 +59,9 @@ python3 web/server.py
 | `VERIFY_BASE_URL`, `VERIFY_API_KEY`, `VERIFY_MODEL` | Optional second model for the verifier. Without all three, the chat model rates listings with the verifier's own prompt. |
 | `HACKU_SECRET` | Optional signing secret. Without it, a random one is kept in `data/secret.key`. Changing it voids saved cart items and mandates. |
 | `HACKU_DATA_DIR` | Optional data folder. Default `web/data/`. |
+| `HACKU_HOST` | Bind address. Default `127.0.0.1`. |
+| `HACKU_PORT` | Bind port. Default `8765`. |
+| `HACKU_ORIGIN` | Public site URL used for Stripe return links. Default `http://127.0.0.1:8765`. On the host it is `https://hacku-production.up.railway.app`. |
 
 Without `OPENAI_API_KEY`, `/api/chat` returns an error. Without `SERPER_API_KEY`, the search tools fail and the assistant says so. Without a Stripe key, checkout returns 503.
 
@@ -69,8 +72,9 @@ Filling a store's cart needs Google Chrome in `/Applications` and the Python pac
 | Tool | What it does |
 |---|---|
 | `ask_user` | 1 to 3 multiple-choice questions (budget, use, one key preference, or a trade-off between the shown picks). The turn pauses. The answer comes back as this tool's result: `{"answers": [...], "note": "…"}`, `{"skipped": true}`, or `{"user_reply": "…"}`. |
+| `next_steps` | 3 to 5 chips under the input. Call it in the same round as the final reply. Each chip is a short `label` and the exact `prompt` the shopper will send. The chips follow this chat (last request, shown cards, cart, an open trade-off), not generic starters. If the model omits the call, the server asks for it once, silently. |
 | `shop_search` | Google Shopping in `region` (default `hk`; also `tw`, `cn`, `jp`, `kr`, `sg`, `us`, `uk`, `au`). With `store` (for example `taobao`, `amazon.co.jp`, `hktvmall`, or any domain), it searches Google Images for `site:<domain>` product pages, opens up to 5, and reads the price from structured data or the price printed at the top of the page. Each offer gets a `ref`. A `null` price means the page did not show one. |
-| `show_products` | Not a model tool. When a round's tools return refs, the server shows up to 5 of them as cards at once: the searches take turns, repeated names are skipped, and priced offers come first. Card data comes from the cached search result, so the model cannot change a price or link. Each card carries `sig`, the server seal. Offers that were not shown are dropped from the model's context, and the next round may only write the answer or ask one `ask_user` question. The store link behind the first 5 offers of each search is looked up in the background; cards show after at most 0.5 s and are sent again with the store links before the turn ends. |
+| `show_products` | Not a model tool. When a round's tools return refs, the server shows up to 5 of them as cards at once: the searches take turns, repeated names are skipped, and priced offers come first. Card data comes from the cached search result, so the model cannot change a price or link. Each card carries `sig`, the server seal. Offers that were not shown are dropped from the model's context, and the next round may only write the answer, ask one `ask_user` question, or call `next_steps`. The store link behind the first 5 offers of each search is looked up in the background; cards show after at most 0.5 s and are sent again with the store links before the turn ends. |
 | `update_cart` | Changes the shopper's cart: `add` (refs from cards or `open_page`), `set` (a cart line's quantity), `remove` (cart lines), `clear`. The page applies the change through `HackuCart`, and the server writes the one-line summary, so the turn ends without another model round. |
 | `control_page` | Runs the app for the shopper: `open_cart`, `cart_page`, `orders_page`, `new_chat`, `chinese`, `english`. The cart panel opens at once; the rest happen after the reply is saved. |
 | `web_search` | Google search in `region`. Titles, links, snippets. |
@@ -85,17 +89,17 @@ Search results are cached in `data/cache.db` for 6 hours and page reads for 2 ho
 
 ## Chat page
 
-- A new chat opens on a welcome screen with four example requests. Quick-action chips stay under the input on every screen: check out the cart, buy again, where the orders are, and the example searches.
+- A new chat opens on a welcome screen with four example requests. After a reply, the model's next-step chips sit under the answer and under the input.
 - While a turn runs, one progress panel shows a timer, each step as it finishes (with the stores found and the lowest price), and a hint that changes every 1.5 seconds. Placeholder cards hold the space until the real cards arrive. When the turn ends, the panel folds into one line, such as 「完成 · 4 個步驟 · 12.3 秒」; click it to see the steps again.
-- Under the latest answer: 複製, 重新回答, and four follow-ups when the answer has cards: 「買推薦的那個」, 「推薦的加入購物車」, 「有沒有更便宜的？」, 「比較前兩個」.
+- Under the latest answer: 複製, 重新回答, and the model's next-step chips.
 - Cards get tags worked out on the page: 「最便宜」 (lowest price in one currency), 「評價最多」, and 「評分最高」 (at least 20 reviews, when it is a different card). On a wide screen the five cards sit on one row. After the reply is written, the feed scrolls to the latest line.
 - Pointing at a card shows 比較 and 買 (always shown on touch screens). 買 sends 「幫我買第N個（name）」, so the agent prepares that order. 比較 picks up to 3 cards; a bar above the input opens a side-by-side sheet with price, store, rating, and reviews, the best ones ticked, an add-to-cart button per product, and 「問助理哪個好」.
 - The microphone button takes speech (Cantonese or English, by page language) and sends it. It shows only in browsers with speech recognition.
-- After a search, the same chip row under the reply offers 「買推薦的那個」 and the other next steps.
+- After a search, the model's next-step chips follow that reply.
 - The checkout box shows how much of the per-order cap the cart uses, and warns in red when the cart is over it.
 - Cards are numbered 1 to 5. In the answer, 「第N個」 is highlighted; pointing at it lifts that card, and clicking scrolls to it. Prices in the answer are bold. The card the answer recommends, by number or by product name, gets a 「推薦」 badge.
 - Left panel: 新對話, search (Cmd/Ctrl+K), and chats grouped by 釘選, 今天, 昨天, 過去 7 天, 更早. Pointing at a chat shows rename, pin, and delete; delete asks once before it removes the chat.
-- Right panel: the payment authorization (caps and days left), the cart with pictures, a quantity stepper (at 1 the minus becomes remove), and a checkout box with the item count, the total, and 去結帳.
+- Right panel: the payment authorization (caps and days left), the cart with pictures, a quantity stepper (at 1 the minus becomes remove), and a checkout box with the item count, the total, and 去結帳. Each line has 提到; several can sit above the input and go into the next message as `c1`, `c2`…. Adding a product from a card, the compare sheet, or the agent's cart update flies a thumbnail into the cart mark.
 - Below 900 px both panels become drawers: the menu button opens the chats, and the 購物車 button opens the cart.
 - Esc stops a running turn or closes a drawer. `/` focuses the input. A down-arrow button appears when you scroll up, and jumps back to the latest message.
 - 中 / EN switches the page language: in the header on phones, and at the bottom of the left panel on wide screens. The choice is kept in `localStorage` (`hacku.lang`) and sent with each chat request, so step labels, summaries, the fixed replies, and the model's answer follow it. Cards already on screen are redrawn in the new language; earlier answers stay as written. In English, 「#2」, 「card 2」, and 「the second one」 point at cards like 「第二個」. `cart.html` and `orders.html` stay in Chinese.
@@ -114,6 +118,7 @@ Search results are cached in `data/cache.db` for 6 hours and page reads for 2 ho
 | `tool_result` | `id`, `name`, `ok`, `summary`, `detail`, `ui` | A tool finished. `detail` is one short line for the progress panel, such as a few store names and the lowest price. `ui.kind == "products"` carries the cards. |
 | `cards` | `id`, `items` | The same cards again with the store links found since. Replace the cards. |
 | `ask` | `id`, `questions` | Question card. The next request sends `{"role": "tool", "tool_call_id": id, "content": "<answer JSON>"}`. |
+| `next` | `actions` | Quick-action chips from the model for this turn: `{label, prompt}[]`, up to 5. The page puts them under the input and under the reply. |
 | `done` | `messages` | New assistant and tool messages to add to the thread. |
 | `error` | `message` | Shown with a retry button. |
 
@@ -167,6 +172,18 @@ The window always stops at the store's payment page. Whoever places the order pa
 8. Open http://127.0.0.1:8765/orders.html. The order shows the address. Press 「助理代填購物車」. A Chrome window opens the store's checkout with the item and the address filled in, and the status becomes 「購物車已備好」. Do not pay on the store page in a test run.
 9. Enter any store order number and press 「標成已下單」, then press 「退款」. The order shows 「已退款」.
 10. In the cart, press 「撤銷授權」, go back, and ask it to buy again. The red card says the mandate is revoked.
+
+## Public site
+
+The shop is at https://hacku-production.up.railway.app
+
+There is no login: anyone with the URL can chat and use the model and Stripe keys. Store checkout on `/orders.html` still uses Chrome on a local Mac.
+
+To publish a new build from `web/`:
+
+```bash
+railway up
+```
 
 ## Going live
 

@@ -300,3 +300,67 @@ Quick-action chips stay under the input. The dock hint and the welcome subtitle 
 
 New chat: title and examples only. Five chips under the composer (reorder, orders, example searches). No 「即時上網比價」 line.
 
+## 2026-10-03 02:20
+
+Quick-action chips come from the model after each reply, from `next_steps` in that same round. They follow the last request, the shown cards, and the cart. A new chat has none until the first reply. The page keeps the last set on the conversation.
+
+**Checked**
+
+58 unit tests. Live: new chat has no dock chips; after 「你好」 the chips were 搜尋產品 / 查看購物車 / 查訂單狀態; after 「購物車裡有什麼」 they became 搜尋產品 / 查看訂單 / 瀏覽熱門商品.
+
+## 2026-10-03 02:32
+
+Each cart line has 提到. Several lines can sit in the composer at once; send includes their cart lines (`c1`, `c2`…). Adding a product — from a card, the compare sheet, or the agent's `update_cart` — flies a thumbnail into the cart mark.
+
+**Checked**
+
+Two cart lines mentioned together sent 「購物車的 c1「Anker USB-C 充電線 60W」、c2「MOMAX 10000mAh 行動電源」，這幾件怎麼樣？」. Adding Xiaomi and Sony from cards created `.cart-fly` (animation `cart-fly`) and the new rows appeared in the side cart.
+
+## 2026-10-03 16:44
+
+The strip under the input is a small drawer. The handle opens cart, checkout, orders, and new chat, plus the model's next-step chips after a reply.
+
+**Checked**
+
+Handle starts closed as 「快捷」. Opening shows the four tools and 「收起」. 購物車 on the drawer closes it and highlights the cart panel.
+
+## 2026-10-03 16:55
+
+The sheet under the input reviews the cart, mentions every line, copies a shopping list, compares cart items, and sets a per-item cap. Cards above the cap fade. The model's next-step chips stay in the same sheet.
+
+**Checked**
+
+`node --check static/app.js`. Opened the sheet on `http://127.0.0.1:8765/`: 檢視這車 / 整車提到對話 / 複製清單 / 比較這車, plus 單件上限 pills. Mention-all put both cart lines above the input. Compare opened Xiaomi and Sony side by side.
+
+## 2026-10-03 16:58
+
+The sheet under the input is gone. Next-step chips sit under the latest answer and under the composer.
+
+**Checked**
+
+`node --check static/app.js`. The footer is the composer only; no handle, grip, or tool rows.
+
+## 2026-10-03 17:10
+
+The chat server can sit on a public HTTPS URL. `HACKU_ORIGIN` is the Stripe return base. `GET /health` answers `{ok: true}`. A Cloudflare quick tunnel on this Mac publishes `http://127.0.0.1:8765`.
+
+**Checked**
+
+Local and public `/health` both return `{"ok": true}`. The public page loaded and answered 「你在嗎？」 with 「在，有什麼可以幫你？」.
+
+## 2026-10-03 17:20
+
+The shop runs on Railway at a public HTTPS URL. `HACKU_HOST`, `HACKU_PORT`, and `HACKU_ORIGIN` are set on the host. This Mac does not have to stay on.
+
+**Checked**
+
+`https://hacku-production.up.railway.app/health` returns `{"ok": true}`. The hosted page answered 「你在嗎？」 with 「在，有什麼可以幫你？」.
+
+## 2026-10-03 17:35
+
+Ask cards show options in a row. Each question can be skipped or answered in the shopper's own words. The card sends after every question has a choice, a skip, or a written answer.
+
+**Checked**
+
+`node --check static/app.js`. A three-question card accepted a chip, a skip, and a written answer, then enabled 「送出答案」.
+

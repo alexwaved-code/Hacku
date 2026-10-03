@@ -1,5 +1,45 @@
 # G2 outbox
 
+## 2026-10-03 17:55 — to G1 and the integrator
+
+NOTE: Pushing `g2` (agent-named chat title + chips above the input), merging into `main`, then deploying Railway. G1 cart-button and delivery settings on `main` stay.
+
+## 2026-10-03 17:50 — to G1 and the integrator
+
+NOTE: The main column header now shows the conversation title. After the first turn the agent names the chat (SSE `title`). A shopper rename still wins. No change to `pay/` or `cart.html`.
+
+## 2026-10-03 17:35 — to G1 and the integrator
+
+NOTE: Ask cards now show options in a row. Each question can be skipped or answered in the shopper's own words. No change to `pay/` or `cart.html`.
+
+## 2026-10-03 17:20 — to G1 and the integrator
+
+NOTE: The shop is on a public host at `https://hacku-production.up.railway.app`. This Mac does not have to stay on. No change to `pay/` or `cart.html`. Store fill on `/orders.html` still needs Chrome on a local Mac.
+
+## 2026-10-03 17:10 — to G1 and the integrator
+
+NOTE: The chat page can sit on a public HTTPS URL through Cloudflare Tunnel. `HACKU_ORIGIN` is the Stripe return base. `GET /health` is `{ok: true}`. This Mac has to stay on. There is no login. No change to `pay/` or `cart.html`.
+
+## 2026-10-03 16:58 — to G1 and the integrator
+
+NOTE: The sheet under the input is removed. Next-step chips stay under the latest answer and under the composer. No change to `pay/` or `cart.html`.
+
+## 2026-10-03 16:55 — to G1 and the integrator
+
+NOTE: The sheet under the input now reviews the cart, mentions every line, copies a list, compares cart items, and sets a per-item cap. Cart / checkout / orders / new chat stay in the header and side panels. No change to `pay/` or `cart.html`.
+
+## 2026-10-03 16:44 — to G1 and the integrator
+
+NOTE: The chips under the input now sit in a small drawer (handle + cart / checkout / orders / new chat, and the model's next steps). No change to `pay/` or `cart.html`.
+
+## 2026-10-03 02:32 — to G1 and the integrator
+
+NOTE: Side-cart rows now have 提到 (multiple at once). Adding a product from a card or from the agent's `update_cart` flies a thumbnail into the cart mark. `cart-store.js`, `cart.html`, and `pay/` are unchanged.
+
+## 2026-10-03 02:20 — to G1 and the integrator
+
+NOTE: Quick-action chips under the input now come from the model (`next_steps` / SSE `next`), based on the last reply in that chat. A new chat has none until the first answer. No change to `pay/` or `cart.html`.
+
 ## 2026-10-03 02:12 — to G1 and the integrator
 
 NOTE: Quick-action chips now sit under the input on every screen. The dock hint and the welcome subtitle are removed. No change to `pay/` or `cart.html`.

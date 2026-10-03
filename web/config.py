@@ -6,9 +6,6 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 STATIC = ROOT / "static"
-HOST = "127.0.0.1"
-PORT = 8765
-ORIGIN = f"http://{HOST}:{PORT}"
 
 
 def load_env(path):
@@ -23,6 +20,43 @@ def load_env(path):
 
 
 load_env(ROOT / ".env")
+
+
+def _int_env(*names, default):
+    for name in names:
+        raw = (os.environ.get(name) or "").strip()
+        if not raw:
+            continue
+        try:
+            return int(raw)
+        except ValueError:
+            continue
+    return default
+
+
+def _hosted():
+    return bool(
+        os.environ.get("PORT")
+        or os.environ.get("FLY_APP_NAME")
+        or os.environ.get("RENDER")
+        or os.environ.get("RAILWAY_ENVIRONMENT")
+    )
+
+
+def _public_origin():
+    for name in ("HACKU_ORIGIN", "RENDER_EXTERNAL_URL"):
+        value = (os.environ.get(name) or "").strip().rstrip("/")
+        if value:
+            return value
+    app = (os.environ.get("FLY_APP_NAME") or "").strip()
+    return f"https://{app}.fly.dev" if app else ""
+
+
+HOST = os.environ.get("HACKU_HOST", "0.0.0.0" if _hosted() else "127.0.0.1").strip() or (
+    "0.0.0.0" if _hosted() else "127.0.0.1"
+)
+PORT = _int_env("HACKU_PORT", "PORT", default=8765)
+ORIGIN = _public_origin() or f"http://127.0.0.1:{PORT}"
 
 
 def _base_url(value):
