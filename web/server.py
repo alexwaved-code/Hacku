@@ -171,9 +171,9 @@ class Handler(SimpleHTTPRequestHandler):
 
     def pay_action(self, path, payload):
         if path == "/api/checkout":
-            return checkout.create(payload.get("items"))
+            return checkout.charge(payload.get("items"), via="cart") if wallet.saved() else checkout.create(payload.get("items"))
         if path == "/api/pay":
-            return checkout.create(payload.get("items"), via="agent")
+            return checkout.charge(payload.get("items"), via="agent") if wallet.saved() else checkout.create(payload.get("items"), via="agent")
         if path == "/api/mandate/revoke":
             return mandate.revoke()
         if path == "/api/wallet/setup":

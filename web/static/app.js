@@ -1908,7 +1908,7 @@ function orderCard(order) {
     pay.disabled = cancel.disabled = true;
     pay.textContent = t("checking");
     message.hidden = false;
-    message.textContent = t("verifying");
+    message.textContent = t("checking");
     let response;
     let data = {};
     try {
@@ -1925,6 +1925,23 @@ function orderCard(order) {
       pay.disabled = cancel.disabled = false;
       pay.textContent = t("confirmPay", total);
       message.textContent = response ? data.error || t("payError") : t("payOffline");
+      return;
+    }
+    if (response.ok && data.paid) {
+      order.result = {
+        kind: "receipt",
+        paid: true,
+        amount: data.amount,
+        currency: data.currency,
+        hash: data.hash,
+        items: data.items,
+        ship_to: data.ship_to,
+        live: data.live,
+        card: data.card,
+      };
+      if (window.HackuCart) HackuCart.removeMany((order.items || []).map((line) => line.id));
+      updateCartCount();
+      settle();
       return;
     }
     if (!response.ok || !data.url) {

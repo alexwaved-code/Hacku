@@ -112,8 +112,6 @@ function walletCard() {
   }
   const ship = shipFromProfile();
   const save = button("pay-sign", t("walletSave"), () => saveCard(save, ship));
-  box.append(el("p", "pay-hint", t("walletNone")));
-  if (!ship.line1) box.append(el("p", "pay-hint", t("walletNoShip")));
   box.append(el("div", "pay-actions", save));
   return box;
 }
@@ -389,7 +387,7 @@ function payLabel(group) {
 
 async function checkout(group, pay, message) {
   pay.disabled = true;
-  pay.textContent = t("verifying");
+  pay.textContent = t(card?.saved ? "checking" : "verifying");
   message.textContent = "";
   try {
     const response = await fetch("/api/checkout", {
@@ -400,6 +398,12 @@ async function checkout(group, pay, message) {
       }),
     });
     const data = await response.json().catch(() => ({}));
+    if (response.ok && data.paid) {
+      HackuCart.removeMany(group.items.map((item) => item.id));
+      paid = data;
+      render();
+      return;
+    }
     if (!response.ok || !data.url) throw new Error(data.error || t("payError"));
     sessionStorage.setItem(PENDING_KEY, JSON.stringify({ id: data.id, items: group.items.map((item) => item.id) }));
     location.href = data.url;
