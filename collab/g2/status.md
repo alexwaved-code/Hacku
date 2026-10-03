@@ -2,9 +2,9 @@
 
 - group: G2
 - human: Jacinto
-- updated: 2026-10-03 19:31
-- doing: Merging the quieter pay page and cart into main, then deploying Railway
-- done: `/pay.html` uses paper, thin cards, and no green paid billboard. The side cart has qty, price, and a clear remove. Mandate is one quiet line.
+- updated: 2026-10-03 19:38
+- doing: Merging the paid-test line removal into main, then deploying Railway
+- done: Paid receipts no longer say Stripe test mode / no real charge / no store order.
 - blocked: none
 - next: none
 - ask_other: none
