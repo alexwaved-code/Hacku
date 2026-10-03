@@ -4,6 +4,7 @@ import ipaddress
 import json
 import re
 import socket
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -131,8 +132,8 @@ def _serper(kind, query, num, region="hk"):
     query = str(query or "").strip()
     if not query:
         raise FetchError("Empty search query.")
-    key = config.serper_key()
-    if not key:
+    keys = config.serper_keys()
+    if not keys:
         raise FetchError("Web search is not set up. Add SERPER_API_KEY to web/.env.")
     gl, hl, _ = REGIONS[region_code(region)]
     cache_key = json.dumps([kind, query, gl, hl, num], ensure_ascii=False)
@@ -140,6 +141,36 @@ def _serper(kind, query, num, region="hk"):
     if hit is not None:
         return hit
     body = json.dumps({"q": query, "gl": gl, "hl": hl, "num": num}).encode("utf-8")
+    now = time.monotonic()
+    ready = [key for key in keys if _key_rest.get(key, 0) <= now]
+    resting = sorted((key for key in keys if key not in ready), key=lambda key: _key_rest[key])
+    problem = None
+    for key in ready + resting:
+        try:
+            data = _serper_call(kind, body, key)
+        except _KeyProblem as error:
+            _key_rest[key] = time.monotonic() + error.rest
+            print(f"Serper key …{key[-4:]} {error}; trying the next key.", flush=True)
+            problem = error
+            continue
+        _key_rest.pop(key, None)
+        cache.put("serper", cache_key, data)
+        return data
+    raise FetchError(problem.message) from problem
+
+
+class _KeyProblem(Exception):
+    def __init__(self, reason, message, rest):
+        super().__init__(reason)
+        self.message = message
+        self.rest = rest
+
+
+# key -> monotonic time before which the key is skipped
+_key_rest = {}
+
+
+def _serper_call(kind, body, key):
     request = urllib.request.Request(
         f"{SERPER_URL}/{kind}",
         data=body,
@@ -148,17 +179,22 @@ def _serper(kind, query, num, region="hk"):
     )
     try:
         with urllib.request.urlopen(request, timeout=TIMEOUT) as response:
-            data = json.loads(response.read().decode("utf-8"))
+            return json.loads(response.read().decode("utf-8"))
     except urllib.error.HTTPError as error:
+        detail = ""
+        try:
+            detail = error.read(400).decode("utf-8", "replace").lower()
+        except OSError:
+            pass
         if error.code in (401, 403):
-            raise FetchError("The search key was refused. Check SERPER_API_KEY.") from error
+            raise _KeyProblem("was refused", "The search key was refused. Check SERPER_API_KEY.", 3600) from error
         if error.code == 429:
-            raise FetchError("Search is rate limited. Try again in a minute.") from error
+            raise _KeyProblem("is rate limited", "Search is rate limited. Try again in a minute.", 60) from error
+        if "credit" in detail or "quota" in detail:
+            raise _KeyProblem("is out of credits", "The search keys are out of credits.", 3600) from error
         raise FetchError(f"Search answered {error.code}.") from error
     except (urllib.error.URLError, TimeoutError, OSError, json.JSONDecodeError) as error:
         raise FetchError("Search did not respond.") from error
-    cache.put("serper", cache_key, data)
-    return data
 
 
 def _price(value, region="hk"):

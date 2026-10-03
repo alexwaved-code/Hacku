@@ -84,8 +84,19 @@ VERIFY = (
 )
 
 
+def serper_keys():
+    """SERPER_API_KEY first, then the comma-separated backups in SERPER_API_KEYS."""
+    keys = []
+    for raw in [os.environ.get("SERPER_API_KEY", "")] + os.environ.get("SERPER_API_KEYS", "").split(","):
+        key = raw.strip()
+        if key and key not in keys:
+            keys.append(key)
+    return keys
+
+
 def serper_key():
-    return os.environ.get("SERPER_API_KEY", "").strip()
+    keys = serper_keys()
+    return keys[0] if keys else ""
 
 
 def stripe_key():

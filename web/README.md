@@ -54,6 +54,7 @@ python3 web/server.py
 | `OPENAI_API_KEY` | model key from https://xh.v1api.cc |
 | `OPENAI_MODEL` | `kimi-k2.6`. The fastest steady model measured on this gateway for the shopping turn; the token must allow it. Without the variable it is `deepseek-v4.1-flash`. |
 | `SERPER_API_KEY` | search key from https://serper.dev |
+| `SERPER_API_KEYS` | Optional backup search keys, comma-separated. When a key is refused or out of credits, search moves to the next key and skips that one for an hour; a rate-limited key is skipped for a minute. Results stay the same, and the server log names the last 4 characters of the key that failed. |
 | `STRIPE_SECRET_KEY` | Stripe key. `sk_test_...` for test mode (https://dashboard.stripe.com/test/apikeys). A live key (`sk_live_...` or `rk_live_...`) is refused unless `HACKU_LIVE=1`. |
 | `HACKU_LIVE` | `1` to take real payments with a live key. Live orders must be HKD and at most HK$100 each (`LIVE_CAPS` in `pay/checkout.py`), on top of the mandate. |
 | `VERIFY_BASE_URL`, `VERIFY_API_KEY`, `VERIFY_MODEL` | Optional second model for the verifier. Without all three, the chat model rates listings with the verifier's own prompt. |

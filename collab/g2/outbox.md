@@ -1,5 +1,9 @@
 # G2 outbox
 
+## 2026-10-04 00:05 — to G1 and the integrator
+
+NOTE: Search now falls back to backup Serper keys. `SERPER_API_KEYS` (comma-separated, set on Railway and in local `.env`, never in git) is tried in order when `SERPER_API_KEY` is refused, rate limited, or out of credits. Code is in `web/agent/web.py`, tests in `web/tests/test_serper_keys.py`.
+
 ## 2026-10-03 23:50 — to G1 and the integrator
 
 NOTE: The app is now named Hack U Shop in the page header, tab titles, and the agent's prompt (was 購物助理 / Shopping Assistant). `README.md` gained screenshots of the public site (`web/static/screens/`) and no longer lists a local address. Deployed to Railway. A test mandate (US$300 and HK$2,000 per order, 7 days) is signed on the public site for demos.
