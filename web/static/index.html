@@ -108,13 +108,14 @@
             </button>
           </form>
           <div id="dock-sheet" class="dock-sheet">
-            <button type="button" id="dock-toggle" class="dock-handle" aria-expanded="false" aria-controls="dock-sheet-body" aria-label="打開快捷抽屜" data-i18n-attr="aria-label:dockOpen">
+            <button type="button" id="dock-toggle" class="dock-handle" aria-expanded="false" aria-controls="dock-sheet-body" aria-label="打開工具列" data-i18n-attr="aria-label:dockOpen">
               <span class="dock-grip" aria-hidden="true"></span>
-              <span id="dock-peek" class="dock-peek">快捷</span>
+              <span id="dock-peek" class="dock-peek"></span>
             </button>
             <div id="dock-sheet-body" class="dock-sheet-body" inert>
               <div class="dock-sheet-inner">
-                <div id="dock-tools" class="dock-tools"></div>
+                <div id="dock-tools" class="dock-rows"></div>
+                <div id="dock-budget" class="dock-budget"></div>
                 <div id="dock-quick" class="dock-next"></div>
               </div>
             </div>

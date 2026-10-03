@@ -324,3 +324,11 @@ The strip under the input is a small drawer. The handle opens cart, checkout, or
 
 Handle starts closed as 「快捷」. Opening shows the four tools and 「收起」. 購物車 on the drawer closes it and highlights the cart panel.
 
+## 2026-10-03 16:55
+
+The sheet under the input reviews the cart, mentions every line, copies a shopping list, compares cart items, and sets a per-item cap. Cards above the cap fade. The model's next-step chips stay in the same sheet.
+
+**Checked**
+
+`node --check static/app.js`. Opened the sheet on `http://127.0.0.1:8765/`: 檢視這車 / 整車提到對話 / 複製清單 / 比較這車, plus 單件上限 pills. Mention-all put both cart lines above the input. Compare opened Xiaomi and Sony side by side.
+

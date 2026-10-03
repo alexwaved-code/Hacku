@@ -86,13 +86,13 @@ Search results are cached in `data/cache.db` for 6 hours and page reads for 2 ho
 
 ## Chat page
 
-- A new chat opens on a welcome screen with four example requests. Under the input a small drawer opens on the handle: cart, checkout, orders, new chat, and the model's next-step chips after a reply.
+- A new chat opens on a welcome screen with four example requests. A sheet under the input reviews the cart, mentions every line, copies a shopping list, compares cart items, sets a per-item cap, and holds the model's next-step chips after a reply.
 - While a turn runs, one progress panel shows a timer, each step as it finishes (with the stores found and the lowest price), and a hint that changes every 1.5 seconds. Placeholder cards hold the space until the real cards arrive. When the turn ends, the panel folds into one line, such as 「完成 · 4 個步驟 · 12.3 秒」; click it to see the steps again.
-- Under the latest answer: 複製, 重新回答, and four follow-ups when the answer has cards: 「買推薦的那個」, 「推薦的加入購物車」, 「有沒有更便宜的？」, 「比較前兩個」.
+- Under the latest answer: 複製 and 重新回答. Next-step chips sit in the sheet under the input and come from the model.
 - Cards get tags worked out on the page: 「最便宜」 (lowest price in one currency), 「評價最多」, and 「評分最高」 (at least 20 reviews, when it is a different card). On a wide screen the five cards sit on one row. After the reply is written, the feed scrolls to the latest line.
 - Pointing at a card shows 比較 and 買 (always shown on touch screens). 買 sends 「幫我買第N個（name）」, so the agent prepares that order. 比較 picks up to 3 cards; a bar above the input opens a side-by-side sheet with price, store, rating, and reviews, the best ones ticked, an add-to-cart button per product, and 「問助理哪個好」.
 - The microphone button takes speech (Cantonese or English, by page language) and sends it. It shows only in browsers with speech recognition.
-- After a search, the same chip row under the reply offers 「買推薦的那個」 and the other next steps.
+- After a search, the sheet under the input lists the model's next steps for that reply. A per-item cap dims cards above that price and is added to later messages.
 - The checkout box shows how much of the per-order cap the cart uses, and warns in red when the cart is over it.
 - Cards are numbered 1 to 5. In the answer, 「第N個」 is highlighted; pointing at it lifts that card, and clicking scrolls to it. Prices in the answer are bold. The card the answer recommends, by number or by product name, gets a 「推薦」 badge.
 - Left panel: 新對話, search (Cmd/Ctrl+K), and chats grouped by 釘選, 今天, 昨天, 過去 7 天, 更早. Pointing at a chat shows rename, pin, and delete; delete asks once before it removes the chat.

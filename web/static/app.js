@@ -38,6 +38,16 @@ let cartSeen = null;
 let chatsSeen = null;
 let lastMandate = null;
 let lastQuick = [];
+let dockFlash = "";
+const BUDGET_KEY = "hacku.itemCap";
+const BUDGETS = [0, 300, 500, 1000, 2000];
+let sessionBudget = 0;
+try {
+  const saved = Number(sessionStorage.getItem(BUDGET_KEY));
+  if (BUDGETS.includes(saved)) sessionBudget = saved;
+} catch {
+  /* The cap lasts for this tab only. */
+}
 const comparing = new Map();
 const mentions = new Map();
 const MAX_COMPARE = 3;
@@ -292,7 +302,7 @@ function actionChip(icon, label, prompt) {
   return h("button", { type: "button", class: "quick-chip", onclick: () => { openDock(false); send(prompt); } }, icon, h("span", {}, label));
 }
 
-function setQuick(actions, opts = {}) {
+function setQuick(actions) {
   const seen = new Set();
   lastQuick = [];
   for (const item of Array.isArray(actions) ? actions : []) {
@@ -303,14 +313,7 @@ function setQuick(actions, opts = {}) {
     lastQuick.push({ label, prompt });
     if (lastQuick.length >= 5) break;
   }
-  renderDockQuick();
-  if (lastQuick.length && opts.open !== false) {
-    openDock(true);
-    const sheet = document.querySelector("#dock-sheet");
-    sheet?.classList.remove("fresh");
-    void sheet?.offsetWidth;
-    sheet?.classList.add("fresh");
-  }
+  renderDock();
 }
 
 function openDock(open) {
@@ -333,9 +336,15 @@ function openDock(open) {
 
 function renderDockPeek() {
   const peek = document.querySelector("#dock-peek");
-  const sheet = document.querySelector("#dock-sheet");
   if (!peek) return;
-  peek.textContent = sheet?.classList.contains("open") ? t("dockClose") : lastQuick.length ? t("dockPeek", lastQuick.length) : t("dockIdle");
+  const { count, total } = cartDigest();
+  peek.textContent = lastQuick.length
+    ? t("dockPeek", lastQuick.length)
+    : sessionBudget
+      ? t("dockPeekBudget", HackuMoney.text(sessionBudget, "HKD"))
+      : count
+        ? t("dockPeekCart", { n: count, total })
+        : "";
 }
 
 function setupDock() {
@@ -363,45 +372,174 @@ function setupDock() {
   });
 }
 
-function dockTool(icon, label, onClick, badge) {
+function cartDigest() {
+  const items = HackuCart.load();
+  const count = items.reduce((n, item) => n + (Number(item.qty) || 1), 0);
+  const listed = items
+    .map((item, index) => {
+      const qty = Number(item.qty) || 1;
+      const unit = item.price == null ? t("priceAtStore") : HackuMoney.text(item.price, item.currency);
+      return `c${index + 1}「${item.name}」${unit}${qty > 1 ? ` ×${qty}` : ""}${item.store ? ` · ${item.store}` : ""}`;
+    })
+    .join(t("sep"));
+  const codes = new Set(items.map((item) => item.currency || "HKD"));
+  const priced = items.length && items.every((item) => item.price != null && !Number.isNaN(Number(item.price)));
+  const total =
+    priced && codes.size === 1
+      ? HackuMoney.text(
+          items.reduce((sum, item) => sum + Number(item.price) * (Number(item.qty) || 1), 0),
+          [...codes][0]
+        )
+      : "";
+  return { items, count, listed, total };
+}
+
+function dockRow(label, meta, onClick, enabled = true) {
   return h(
     "button",
-    { type: "button", class: "dock-tool", onclick: onClick },
-    h("span", { class: "dock-tool-icon" }, icon, badge ? h("span", { class: "dock-tool-badge" }, String(badge)) : null),
-    h("span", {}, label)
+    { type: "button", class: "dock-row", disabled: !enabled, onclick: enabled ? onClick : undefined },
+    h("span", { class: "dock-row-label" }, label),
+    h("span", { class: "dock-row-meta" }, meta || "")
   );
 }
 
-function renderDockTools() {
-  const box = document.querySelector("#dock-tools");
-  if (!box) return;
-  const count = HackuCart.count();
-  box.replaceChildren(
-    dockTool(cartIcon(), t("cart"), () => {
-      openDock(false);
-      pageAction("open_cart");
-    }, count),
-    dockTool(lineIcon("M5 12h14M13 6l6 6-6 6"), t("checkout"), () => {
-      saveChat();
-      location.href = "cart.html";
-    }),
-    dockTool(lineIcon("M4 8l8-4 8 4v8l-8 4-8-4V8zM4 8l8 4 8-4M12 12v8"), t("navOrders"), () => {
-      saveChat();
-      location.href = "orders.html";
-    }),
-    dockTool(lineIcon("M12 5v14M5 12h14"), t("newChat"), () => {
-      openDock(false);
-      resetChat();
-    })
-  );
+function flashDock(key) {
+  dockFlash = key;
+  renderDock();
+  setTimeout(() => {
+    if (dockFlash === key) {
+      dockFlash = "";
+      renderDock();
+    }
+  }, 1400);
 }
 
-function renderDockQuick() {
-  const box = document.querySelector("#dock-quick");
-  if (!box) return;
-  if (!lastQuick.length) box.replaceChildren();
+function reviewCart() {
+  const { items, listed, total } = cartDigest();
+  if (!items.length) return;
+  openDock(false);
+  send(t("dockReviewAsk", { listed, total: total || t("priceAtStore") }));
+}
+
+function mentionAllCart() {
+  const items = HackuCart.load();
+  if (!items.length) return;
+  const allOn = items.every((item) => mentions.has(item.id));
+  if (allOn) {
+    clearMentions();
+    paintMentionRows();
+    renderDock();
+    return;
+  }
+  mentions.clear();
+  for (const item of items) mentions.set(item.id, item);
+  renderMentions();
+  paintMentionRows();
+  openDock(false);
+  els.input.focus();
+  syncComposer();
+}
+
+async function writeClipboard(text) {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    const box = document.createElement("textarea");
+    box.value = text;
+    box.setAttribute("readonly", "");
+    box.style.cssText = "position:fixed;left:-9999px;top:0";
+    document.body.append(box);
+    box.select();
+    const ok = document.execCommand("copy");
+    box.remove();
+    return ok;
+  }
+}
+
+async function copyCartList() {
+  const { items, count, total } = cartDigest();
+  if (!items.length) return;
+  const lines = items.map((item) => {
+    const qty = Number(item.qty) || 1;
+    const price = item.price == null ? t("priceAtStore") : HackuMoney.text(Number(item.price) * qty, item.currency);
+    return `${item.name}  ×${qty}  ${price}${item.store ? `  ${item.store}` : ""}${item.url ? `\n${item.url}` : ""}`;
+  });
+  const foot = total ? t("dockListFoot", { n: count, total }) : t("itemCount", count);
+  flashDock((await writeClipboard([t("dockListTitle"), ...lines, "", foot].join("\n"))) ? "copy" : "copyFail");
+}
+
+function compareCart() {
+  const items = HackuCart.load().slice(0, MAX_COMPARE);
+  if (items.length < 2) return;
+  comparing.clear();
+  for (const item of items) comparing.set(item.id, item);
+  syncCompare();
+  openDock(false);
+  openCompare();
+}
+
+function setSessionBudget(amount) {
+  sessionBudget = BUDGETS.includes(amount) ? amount : 0;
+  try {
+    sessionStorage.setItem(BUDGET_KEY, String(sessionBudget));
+  } catch {
+    /* The cap lasts for this tab only. */
+  }
+  applyBudgetFilter();
+  renderDock();
+}
+
+function attachBudget(message) {
+  if (!sessionBudget) return message;
+  if (/(單件控制在|Keep each item under|幫我買第|Buy #\d|下單)/i.test(message)) return message;
+  if (/HK\$|NT\$|US\$|以內|under\s*(HK)?\$|預算|budget/i.test(message)) return message;
+  return t("budgetWrap", { text: message, cap: HackuMoney.text(sessionBudget, "HKD") });
+}
+
+function applyBudgetFilter() {
+  const cap = sessionBudget;
+  document.querySelectorAll(".card-wrap[data-price]").forEach((wrap) => {
+    const price = Number(wrap.dataset.price);
+    wrap.classList.toggle("over-budget", cap > 0 && Number.isFinite(price) && price > cap);
+  });
+}
+
+function renderDock() {
+  const tools = document.querySelector("#dock-tools");
+  const budget = document.querySelector("#dock-budget");
+  const quick = document.querySelector("#dock-quick");
+  if (!tools || !budget || !quick) return;
+  const { items, count, total } = cartDigest();
+  const allOn = items.length > 0 && items.every((item) => mentions.has(item.id));
+  const copyMeta = dockFlash === "copy" ? t("copied") : dockFlash === "copyFail" ? t("copyFailed") : total || t("itemCount", count);
+  tools.replaceChildren(
+    dockRow(t("dockReview"), count ? total || t("itemCount", count) : t("cartEmpty"), reviewCart, items.length > 0),
+    dockRow(allOn ? t("dockMentionClear") : t("dockMentionAll"), count ? t("itemCount", count) : "", mentionAllCart, items.length > 0),
+    dockRow(t("dockCopyList"), items.length ? copyMeta : "", copyCartList, items.length > 0),
+    dockRow(t("dockCompareCart"), items.length >= 2 ? t("comparePicked", Math.min(items.length, MAX_COMPARE)) : t("compareNeedTwo"), compareCart, items.length >= 2)
+  );
+  budget.replaceChildren(
+    h("span", { class: "dock-budget-label" }, t("dockBudget")),
+    h(
+      "div",
+      { class: "lang-switch", role: "group", "aria-label": t("dockBudget") },
+      BUDGETS.map((amount) =>
+        h(
+          "button",
+          {
+            type: "button",
+            "aria-pressed": String(sessionBudget === amount),
+            onclick: () => setSessionBudget(amount),
+          },
+          amount ? t("dockBudgetCap", amount) : t("dockBudgetAny")
+        )
+      )
+    )
+  );
+  if (!lastQuick.length) quick.replaceChildren();
   else {
-    box.replaceChildren(
+    quick.replaceChildren(
       h("p", { class: "dock-next-title" }, t("dockNext")),
       h("div", { class: "quick-row" }, lastQuick.map((item) => actionChip(null, item.label, item.prompt)))
     );
@@ -572,6 +710,7 @@ function paintMentionRows() {
       btn.setAttribute("aria-pressed", String(on));
     }
   });
+  renderDock();
 }
 
 function cardSource(product) {
@@ -649,8 +788,7 @@ function setLanguage(lang) {
   renderMandate(lastMandate);
   document.querySelector("#compare-bar")?.remove();
   if (comparing.size) syncCompare();
-  renderDockTools();
-  renderDockQuick();
+  renderDock();
 }
 
 /* ---------- Sending ---------- */
@@ -665,6 +803,7 @@ function send(text, opts = {}) {
     renderMentions();
     paintMentionRows();
   }
+  message = attachBudget(message);
   const reply = takePendingAsk({ user_reply: message });
   runTurn(message, [reply || { role: "user", content: message }]);
 }
@@ -851,8 +990,7 @@ function updateCartCount() {
     else cardPainters.delete(painter);
   }
   renderSideCart();
-  renderDockTools();
-  renderDockQuick();
+  renderDock();
 }
 
 function renderSideCart() {
@@ -1319,7 +1457,8 @@ function restoreChat() {
     state.openAsk = saved.openAsk;
     els.input.placeholder = t("askPlaceholder");
   }
-  setQuick(saved.next, { open: false });
+  setQuick(saved.next);
+  applyBudgetFilter();
 }
 
 function readChat() {
@@ -1394,6 +1533,7 @@ function appendSavedAgent(entry) {
   if (products.length) cards.style.setProperty("--n", String(Math.min(products.length, 5)));
   numberCards(cards);
   tagCards(cards, products);
+  applyBudgetFilter();
   markPick(item, entry.text);
   els.list.append(item);
 }
@@ -1473,6 +1613,7 @@ function createTurn() {
       cards.style.setProperty("--n", String(Math.min(items.length, 5) || 5));
       numberCards(cards);
       tagCards(cards, items);
+      applyBudgetFilter();
       cards.querySelectorAll("img").forEach((img) => {
         if (!img.complete) img.addEventListener("load", () => scrollToEnd(), { once: true });
       });
@@ -1531,19 +1672,6 @@ function createTurn() {
       const retry = h("button", { type: "button", class: "act-btn act-retry", title: t("regenerate") }, retryIcon(), t("regenerate"));
       retry.addEventListener("click", onRetry);
       if (said) item.append(h("div", { class: "turn-actions" }, copy, retry));
-      if (!state.pendingAsk && lastQuick.length) {
-        item.append(
-          h(
-            "div",
-            { class: "quick turn-quick" },
-            h(
-              "div",
-              { class: "quick-row" },
-              lastQuick.map((entry) => actionChip(null, entry.label, entry.prompt))
-            )
-          )
-        );
-      }
       scrollToEnd(true);
     },
     stop() {
@@ -1755,6 +1883,7 @@ function productCard(product) {
     h("span", {}, t("compare"))
   );
   const wrap = h("div", { class: comparing.has(key) ? "card-wrap comparing" : "card-wrap", "data-key": key }, card, h("div", { class: "card-tools" }, pick, buy));
+  if (product.price != null && !Number.isNaN(Number(product.price))) wrap.dataset.price = String(product.price);
   buy.addEventListener("click", (event) => {
     event.preventDefault();
     event.stopPropagation();
@@ -2302,5 +2431,4 @@ saveChat();
 renderChatList();
 finishStripeReturn();
 setupDock();
-renderDockTools();
-renderDockQuick();
+renderDock();

@@ -1688,26 +1688,17 @@ a.card:hover .pic img {
 }
 
 .dock-sheet {
-  margin: 8px 0 0;
+  margin: 2px 0 0;
   overflow: hidden;
-  border: 1px solid var(--line);
-  border-radius: 18px;
-  background: #fff;
-  box-shadow: 0 8px 22px rgba(28, 25, 21, 0.08);
-  transform-origin: bottom center;
-}
-
-.dock-sheet.fresh {
-  animation: dock-pop 0.42s var(--ease);
 }
 
 .dock-handle {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 6px;
+  gap: 5px;
   width: 100%;
-  padding: 8px 14px 10px;
+  padding: 8px 0 6px;
   border: 0;
   background: transparent;
   color: var(--muted);
@@ -1722,33 +1713,35 @@ a.card:hover .pic img {
 }
 
 .dock-grip {
-  width: 36px;
-  height: 4px;
-  border-radius: 999px;
-  background: #d4cbbd;
-  transition: background 0.15s, transform 0.2s var(--ease);
+  width: 28px;
+  height: 2px;
+  border-radius: 1px;
+  background: rgba(28, 25, 21, 0.2);
+  transition: background 0.15s;
 }
 
 .dock-handle:hover .dock-grip,
 .dock-sheet.open .dock-grip {
-  background: #b7ad9e;
-}
-
-.dock-sheet.open .dock-grip {
-  transform: scaleX(1.15);
+  background: rgba(28, 25, 21, 0.45);
 }
 
 .dock-peek {
-  color: var(--ink);
-  font-size: 12px;
-  font-weight: 650;
-  letter-spacing: 0.02em;
+  min-height: 0;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+}
+
+.dock-peek:empty,
+.dock-sheet.open .dock-peek {
+  display: none;
 }
 
 .dock-sheet-body {
   display: grid;
   grid-template-rows: 0fr;
-  transition: grid-template-rows 0.34s var(--ease);
+  transition: grid-template-rows 0.28s var(--ease);
 }
 
 .dock-sheet.open .dock-sheet-body {
@@ -1756,77 +1749,90 @@ a.card:hover .pic img {
 }
 
 .dock-sheet-inner {
+  min-height: 0;
   overflow: hidden;
-  padding: 0 12px 12px;
+  padding: 4px 2px 8px;
+  border-top: 1px solid var(--line);
 }
 
-.dock-tools {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 8px;
-  margin-bottom: 4px;
-}
-
-.dock-tool {
+.dock-rows {
   display: flex;
   flex-direction: column;
-  align-items: center;
-  gap: 6px;
-  padding: 10px 4px 8px;
-  border: 1px solid transparent;
-  border-radius: 14px;
-  background: #faf8f4;
+}
+
+.dock-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  width: 100%;
+  padding: 11px 2px;
+  border: 0;
+  border-bottom: 1px solid #efeae3;
+  background: transparent;
   color: var(--ink);
   font: inherit;
-  font-size: 11.5px;
-  font-weight: 650;
+  font-size: 13.5px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  text-align: left;
   cursor: pointer;
-  transition: transform 0.18s var(--ease), background 0.15s, border-color 0.15s;
 }
 
-.dock-tool:hover {
-  border-color: #e4ddd2;
-  background: #fff;
-  transform: translateY(-2px);
+.dock-row:last-child {
+  border-bottom: 0;
 }
 
-.dock-tool:active {
-  transform: scale(0.94);
+.dock-row:hover:not(:disabled) {
+  color: #111;
 }
 
-.dock-tool-icon {
-  position: relative;
-  display: grid;
-  place-items: center;
-  width: 36px;
-  height: 36px;
-  border-radius: 12px;
-  background: #fff;
-  box-shadow: 0 1px 4px rgba(28, 25, 21, 0.08);
-}
-
-.dock-tool-icon svg {
-  width: 18px;
-  height: 18px;
-}
-
-.dock-tool-badge {
-  position: absolute;
-  top: -5px;
-  right: -6px;
-  min-width: 16px;
-  height: 16px;
-  padding: 0 4px;
-  border-radius: 999px;
-  background: var(--accent);
+.dock-row:hover:not(:disabled) .dock-row-meta {
   color: var(--ink);
-  font-size: 10px;
-  font-weight: 750;
-  line-height: 16px;
+}
+
+.dock-row:disabled {
+  cursor: default;
+  opacity: 0.32;
+}
+
+.dock-row-meta {
+  flex: none;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 450;
+  font-variant-numeric: tabular-nums;
+}
+
+.dock-budget {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 2px 6px;
+}
+
+.dock-budget-label {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+}
+
+.dock-budget .lang-switch {
+  margin-left: 0;
+}
+
+.dock-budget .lang-switch button {
+  min-width: 38px;
 }
 
 .dock-next {
   min-height: 0;
+  margin-top: 4px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
 }
 
 .dock-next:empty {
@@ -1834,25 +1840,38 @@ a.card:hover .pic img {
 }
 
 .dock-next-title {
-  margin: 10px 2px 8px;
+  margin: 0 2px 8px;
   color: var(--muted);
   font-size: 11px;
-  font-weight: 650;
-  letter-spacing: 0.04em;
+  font-weight: 500;
+  letter-spacing: 0.08em;
 }
 
 .dock-next .quick-row {
   justify-content: flex-start;
+  gap: 6px 14px;
 }
 
 .dock-next .quick-chip {
-  background: #faf8f4;
+  height: auto;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12.5px;
+  animation: none;
 }
 
-@keyframes dock-pop {
-  0% { transform: translateY(8px) scale(0.98); }
-  55% { transform: translateY(-3px) scale(1.01); }
-  100% { transform: translateY(0) scale(1); }
+.dock-next .quick-chip:hover {
+  border: 0;
+  color: var(--ink);
+  transform: none;
+}
+
+.card-wrap.over-budget {
+  opacity: 0.4;
+  filter: grayscale(0.3);
 }
 
 .mention-bar {

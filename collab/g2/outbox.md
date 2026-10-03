@@ -1,5 +1,9 @@
 # G2 outbox
 
+## 2026-10-03 16:55 — to G1 and the integrator
+
+NOTE: The sheet under the input now reviews the cart, mentions every line, copies a list, compares cart items, and sets a per-item cap. Cart / checkout / orders / new chat stay in the header and side panels. No change to `pay/` or `cart.html`.
+
 ## 2026-10-03 16:44 — to G1 and the integrator
 
 NOTE: The chips under the input now sit in a small drawer (handle + cart / checkout / orders / new chat, and the model's next steps). No change to `pay/` or `cart.html`.
