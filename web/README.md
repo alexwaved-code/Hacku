@@ -1,6 +1,6 @@
 # Hack U Shop — web app
 
-A chat page that researches real products, in Hong Kong by default or in one store or country the user names, and buys them through Stripe Checkout. It also answers ordinary questions. The browser talks only to `web/server.py`. Keys stay in local `web/.env`.
+A chat page that researches real products, in Hong Kong by default or in one store or country the user names, and pays for them with a card the shopper saved once. It also answers ordinary questions. The browser talks only to `web/server.py`. Keys stay in local `web/.env`.
 
 The shopper signs a spending mandate first: a cap per order for each currency, valid 1 to 30 days. There are three ways to pay inside it:
 
@@ -30,7 +30,7 @@ With a test key, no real money moves, and the store does not get an order. With 
 | `tests/` | both | `python3 -m unittest discover -s tests` from `web/`. |
 | `data/` | | Created at run time: `hacku.db`, `cache.db`, `secret.key`, and the Chrome profile `browser/`. Not in git. |
 
-`agent/`, `pay/`, and `shop/` do not import each other. `server.py` wires them. It hands `checkout.quote` to the agent with `tools.set_quoter`, so the agent can quote an order but has no way to charge it.
+`agent/`, `pay/`, and `shop/` do not import each other. `server.py` wires them. It hands the agent one payment function. With a saved card that function charges through Stripe after every gate passes. The agent cannot skip a gate or raise the cap.
 
 ## Setup
 
@@ -155,7 +155,7 @@ A checkout page opens, or the saved card is charged, only when all of these pass
 
 Each failed gate adds a `refused` entry to the hash chain with the rule that stopped it: `live.currency`, `live.cap`, `mandate.missing`, `mandate.signature`, `mandate.revoked`, `mandate.expired`, `mandate.currency`, `mandate.per_order_cap`, `cooling`, `verifier`, `card.missing`, or `card.declined`. The 授權紀錄 card on `/pay.html#log` lists them next to the mandate, card, and payment entries.
 
-Stripe Checkout collects a Hong Kong delivery address and a phone number. Mandates, orders, delivery addresses, the cooling period, and the hash chain are stored in `data/hacku.db`, so a revoked mandate stays revoked after a restart. Every mandate, revocation, checkout, payment, placed order, refund, and cooling period adds one entry to the chain; a paid order shows the first 12 characters of its entry hash.
+The saved-card address comes from 設定. Stripe Checkout, used only when no card is saved, collects a Hong Kong delivery address and a phone number. Mandates, orders, delivery addresses, the cooling period, and the hash chain are stored in `data/hacku.db`, so a revoked mandate stays revoked after a restart. Every mandate, revocation, saved card, payment, refusal, placed order, refund, and cooling period adds one entry to the chain. A refusal names the rule. A paid order shows the first 12 characters of its entry hash.
 
 Test card on Stripe Checkout: `4242 4242 4242 4242`, any future date, any CVC. If Stripe offers Link, choose 「Pay without Link」.
 
@@ -191,7 +191,14 @@ Without a saved card, steps 1 and 2 are the same, then each order goes through S
 
 ## Manual versus assistant
 
-`/compare.html` times the same purchase two ways with one stopwatch. Manual: search, compare, and check out on the store yourself. Assistant: one sentence in the chat until the receipt shows. Press 「開始計時」, press 「+1 步」 for every action (open a page, click, fill a field), press 「完成」, then enter the total with delivery and the store. 「存成一筆對照」 keeps the run with its start and end times. The lower total including delivery wins; on a tie, the faster route wins. 「匯出 JSON」 downloads every saved run as `compare.json`.
+Same purchase: one 1 m, 60W USB-C cable, under HK$100, delivered in Hong Kong.
+
+| Route | Time | Steps | Price | What happened |
+|---|---|---|---|---|
+| Assistant | 42 s | 3 | HK$39 | One sentence, one choice, then a receipt on the saved card (Visa 4242, Momax Mag.Link, test mode). |
+| Manual | no upper bound | — | — | The same cable can be sold out, behind a login, or stuck on a checkout button that does not continue. Until a store accepts payment, this route is not finished. |
+
+`/compare.html` is the stopwatch for a run that does finish. Press 「開始計時」, press 「+1 步」 for every action, press 「完成」, then enter the total with delivery and the store. 「存成一筆對照」 keeps the start and end times. The lower total including delivery wins; on a tie, the faster route wins. 「匯出 JSON」 downloads the runs as `compare.json`.
 
 ## Public site
 

@@ -2,7 +2,7 @@
 
 **Ask. Compare. Check out.**
 
-Hack U Shop is an AI shopping agent. You tell it what you want in one sentence, and it searches real stores, shows real products with real prices, picks one and says why, and buys it for you — but only inside a spending limit you signed, and only after you press pay.
+Hack U Shop is an AI shopping agent. You tell it what you want in one sentence, and it searches real stores, shows real products with real prices, picks one and says why, and pays with a card you saved once — only inside a spending limit you signed.
 
 [![Hack U Shop demo video](web/static/demo-cover.jpg)](https://github.com/alexwaved-code/Hacku-shop-oiiaii/releases/download/demo/Hack-U-Shop-Demo.mp4)
 
@@ -20,7 +20,7 @@ Hack U Shop is an AI shopping agent. You tell it what you want in one sentence, 
 
 ![Search results with product cards](web/static/screens/desktop-results.jpg)
 
-**"Buy the one you recommend."** The agent prepares the order. Nothing is paid until you press "Confirm and pay".
+**"Buy it."** One sentence. With a saved card, the receipt comes back in the chat.
 
 ![Confirm order card](web/static/screens/desktop-order.jpg)
 
@@ -46,23 +46,23 @@ Buying something online means ten tabs, five stores, and prices you cannot compa
 3. **It picks one, and says why.** The answer names the best card and the trade-off. Cards are tagged "Cheapest", "Most reviewed", "Top rated", and "Pick".
 4. **Compare in one click.** A side-by-side sheet for up to three cards. The agent can also ask one or two quick questions (budget, use, a key preference) when the request is vague.
 5. **Cart and cap.** Add cards to the cart from the chat or by hand. The cart always shows how much of your per-order limit it uses.
-6. **"Buy it."** The agent prepares an order card with the items, the total, and your cap. Nothing is paid yet.
-7. **You confirm, Stripe takes the card.** Press "Confirm and pay" and the page goes to Stripe Checkout for the card and a delivery address. Hack U Shop never sees the card number.
-8. **The receipt lands back in the chat,** with the amount, the delivery address, and a record hash. Ask "did it go through?" and the agent quotes the same record.
+6. **Save a card once.** On the Pay page, Stripe keeps the card. Hack U Shop keeps the brand, the last four digits, and the delivery address from Settings.
+7. **"Buy it."** One sentence. The server runs every gate, charges the saved card, and the receipt comes back in the chat: amount, card, address, and record hash. No payment page opens.
+8. **Over the cap, or revoked, it stops.** Nothing is charged. The chat names the rule, and the Pay page log records the same rule next to the amount and the cap.
 
 An order desk (`/orders.html`) lists paid orders. For Shopify stores and HKTVmall it can open the store's checkout in Chrome with the items and the delivery address filled in, and stop at the store's payment page so a person places the order. It can also record the store's order number or refund the shopper.
 
 ## Why you can trust it
 
-The agent can prepare an order, but it has no way to charge one. A payment page opens only when every check passes:
+The agent can ask to pay. Only the gates can charge the saved card, and only when every check passes:
 
 | Guard | What it stops |
 |---|---|
 | **Sealed product cards** | Every card is signed by the server from the cached search result. The model cannot change a price, a store, or a link. |
-| **Signed spending mandate** | You set a cap per order for each currency, valid 1 to 30 days. Over the cap, revoked, or expired, and the order is refused. |
-| **Second-model verifier** | Before checkout, a separate model rates every listing (reject, reconsider, accept). Anything short of "accept" does not reach payment, and a reject starts a 10-minute cooling period. |
-| **Human confirmation** | Only the shopper's press on "Confirm and pay" opens Stripe Checkout. |
-| **Hash chain** | Every mandate, payment, refund, and cooling period is chained in SQLite, so the record cannot be quietly rewritten. |
+| **Signed spending mandate** | You set a cap per order for each currency, valid 1 to 30 days. Over the cap, revoked, or expired, and the charge is refused. |
+| **Second-model verifier** | Before any charge, a separate model rates every listing (reject, reconsider, accept). Anything short of "accept" is not charged, and a reject starts a 10-minute cooling period. |
+| **The rule is logged** | A refusal names the rule that stopped it, in the chat and in the Pay page log, with the total and the cap. |
+| **Hash chain** | Every mandate, saved card, payment, refusal, refund, and cooling period is chained in SQLite, so the record cannot be quietly rewritten. |
 
 Text on web pages is treated as data. A page that tries to instruct the agent is flagged to the model and on the card.
 
@@ -72,24 +72,35 @@ Text on web pages is treated as data. A page that tries to instruct the agent is
 Browser (chat, cart, order desk)
    │  SSE stream
    ▼
-web/server.py ── agent/   tool loop: search, read pages, cards, cart, ask, buy (quote only)
-              ├─ pay/     mandate, verifier, Stripe Checkout, order store, hash chain
+web/server.py ── agent/   tool loop: search, read pages, cards, cart, ask, buy
+              ├─ pay/     mandate, verifier, saved card, order store, hash chain
               └─ shop/    fills a store's cart in Chrome, stops before payment
 ```
 
-`agent/`, `pay/`, and `shop/` do not import each other. The server wires them, and hands the agent a quote function, not a charge function.
+`agent/`, `pay/`, and `shop/` do not import each other. The server wires them, and hands the agent one payment function. That function runs every gate before Stripe sees the order.
 
 ## Stack
 
 - **Model:** Kimi K2.6 through an OpenAI-compatible gateway (any compatible model works)
 - **Search:** Serper (Google Shopping, Google Images, Google Search)
-- **Payments:** Stripe Checkout, test mode by default
+- **Payments:** a card saved once on Stripe, charged inside the cap. Stripe Checkout remains for a shopper with no saved card. Test mode by default.
 - **Hosting:** Railway
 - **Code:** Python standard-library HTTP server, SQLite, plain HTML, CSS, and JavaScript. No framework, no build step.
 
+## Manual versus assistant
+
+Same purchase: one 1 m, 60W USB-C cable, under HK$100, delivered in Hong Kong.
+
+| Route | Time | Steps | Price |
+|---|---|---|---|
+| Assistant | 42 s | 3 | HK$39 |
+| Manual | no upper bound | — | — |
+
+The assistant time is one sentence, one choice, then a receipt on the saved card (Visa ending 4242, Momax Mag.Link, test mode). By hand, the same cable can be sold out, behind a login, or stuck on a checkout button that does not continue. Until a store accepts payment, that route is not finished.
+
 ## Try it
 
-Open https://hacku-production.up.railway.app, sign a spending limit on the Pay page, and ask for something. Payments run in Stripe test mode: use card `4242 4242 4242 4242`, any future date, any CVC.
+Open https://hacku-production.up.railway.app, sign a spending limit on the Pay page, save a card once, and ask for something. Payments run in Stripe test mode: card `4242 4242 4242 4242`, any future date, any CVC.
 
 ## Run your own copy
 
