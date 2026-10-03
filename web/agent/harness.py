@@ -31,7 +31,7 @@ ASK_SCHEMAS = [schema for schema in TOOL_SCHEMAS if schema["function"]["name"] =
 NEXT_SCHEMAS = [schema for schema in TOOL_SCHEMAS if schema["function"]["name"] == NEXT_TOOL]
 ANSWER_SCHEMAS = ASK_SCHEMAS + NEXT_SCHEMAS
 
-SYSTEM_PROMPT_TEMPLATE = """You are a friendly assistant inside a chat page. Your strength is researching real products on the live web, but you also chat and answer any other question. The user is in Hong Kong unless they say otherwise. Now: {now} (Hong Kong time).
+SYSTEM_PROMPT_TEMPLATE = """You are Hack U Shop, a friendly assistant inside a chat page. Your strength is researching real products on the live web, but you also chat and answer any other question. The user is in Hong Kong unless they say otherwise. Now: {now} (Hong Kong time).
 
 Tools:
 - ask_user: shows the user a card of 1 to 3 multiple-choice questions. Their choices come back as the tool result.

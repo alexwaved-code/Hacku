@@ -84,7 +84,7 @@ function stampChats(session, receipt) {
 
 function render() {
   HackuText.apply();
-  document.title = t("payTitle");
+  document.title = `${t("payTitle")} · ${t("title")}`;
   root.replaceChildren();
   if (notice) root.append(el("p", `pay-notice ${notice.kind}`, notice.text));
   if (paid) {
@@ -189,9 +189,10 @@ function mandateCard(all) {
     const caps = Object.entries(mandate.caps)
       .map(([code, cap]) => money(cap, code))
       .join(t("sep"));
+    const until = mandateUntil();
     box.append(
       el("p", "pay-status ok", t("mandateOk")),
-      el("p", "pay-hint", `${t("capEach", caps)} · ${mandate.detail || ""}`),
+      el("p", "pay-hint", until ? `${t("capEach", caps)} · ${until}` : t("capEach", caps)),
       el(
         "div",
         "pay-actions",
@@ -207,6 +208,13 @@ function mandateCard(all) {
   box.append(el("p", `pay-status ${mandate.valid ? "ok" : "off"}`, mandate.valid ? t("editMandate") : mandate.detail || t("mandateMissing")));
   box.append(mandateForm(all));
   return box;
+}
+
+function mandateUntil() {
+  const end = mandate.expires ? new Date(mandate.expires) : null;
+  if (!end || Number.isNaN(end.getTime())) return "";
+  const days = Math.max(0, Math.ceil((end - Date.now()) / 86400000));
+  return days > 0 ? t("daysLeft", { days, until: HackuText.date(end) }) : t("endsToday");
 }
 
 function mandateForm(all) {
@@ -360,12 +368,12 @@ function el(tag, className, ...children) {
 }
 
 HackuText.apply();
-document.title = t("payTitle");
+document.title = `${t("payTitle")} · ${t("title")}`;
 
 document.querySelectorAll("[data-lang]").forEach((button) => {
   button.addEventListener("click", () => {
     HackuText.set(button.dataset.lang);
-    document.title = t("payTitle");
+    document.title = `${t("payTitle")} · ${t("title")}`;
     const home = document.querySelector(".pay-home");
     if (home) home.textContent = t("payBackChat");
     render();

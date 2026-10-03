@@ -10,6 +10,31 @@ Hack U Shop is an AI shopping agent. You tell it what you want in one sentence, 
 - **Demo video (88 s, 1080p):** [Hack-U-Shop-Demo.mp4](https://github.com/alexwaved-code/Hacku-shop-oiiaii/releases/download/demo/Hack-U-Shop-Demo.mp4)
 - **Pitch deck:** [Hack-U-Shop-Pitch.pptx](https://github.com/alexwaved-code/Hacku-shop-oiiaii/releases/download/demo/Hack-U-Shop-Pitch.pptx)
 
+## Screenshots
+
+**Ask in one sentence.** Chats on the left, cart and spending limit on the right.
+
+![Hack U Shop home](web/static/screens/desktop-home.jpg)
+
+**Real products from live US stores.** The agent picks the Bose QuietComfort (#2) for long flights and explains the trade-offs.
+
+![Search results with product cards](web/static/screens/desktop-results.jpg)
+
+**"Buy the one you recommend."** The agent prepares the order. Nothing is paid until you press "Confirm and pay".
+
+![Confirm order card](web/static/screens/desktop-order.jpg)
+
+**Your limit, signed by you.** A cap per order for each currency, with the days left.
+
+![Payment authorization](web/static/screens/desktop-pay.jpg)
+
+**Same agent on your phone.**
+
+<p>
+  <img src="web/static/screens/phone-home.jpg" alt="Hack U Shop on a phone" width="300">
+  <img src="web/static/screens/phone-results.jpg" alt="Search results on a phone" width="300">
+</p>
+
 ## The problem
 
 Buying something online means ten tabs, five stores, and prices you cannot compare. Chatbots can talk about products, but they invent prices, and nobody wants to hand an AI their card.
@@ -62,14 +87,16 @@ web/server.py ── agent/   tool loop: search, read pages, cards, cart, ask, b
 - **Hosting:** Railway
 - **Code:** Python standard-library HTTP server, SQLite, plain HTML, CSS, and JavaScript. No framework, no build step.
 
-## Run it
+## Try it
+
+Open https://hacku-production.up.railway.app, sign a spending limit on the Pay page, and ask for something. Payments run in Stripe test mode: use card `4242 4242 4242 4242`, any future date, any CVC.
+
+## Run your own copy
 
 ```bash
 cp web/.env.example web/.env   # add OPENAI_API_KEY, SERPER_API_KEY, STRIPE_SECRET_KEY (sk_test_...)
 python3 web/server.py
 ```
-
-Open http://127.0.0.1:8765/, sign a spending limit on the cart page, and ask for something. Test card on Stripe: `4242 4242 4242 4242`, any future date, any CVC.
 
 Tests, from `web/`:
 

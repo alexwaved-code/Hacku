@@ -4,7 +4,7 @@ const HackuText = (() => {
 
   const TEXT = {
     zh: {
-      title: "購物助理",
+      title: "Hack U Shop",
       brandSub: "AI 比價・代購",
       language: "語言",
       close: "關閉",
@@ -224,7 +224,7 @@ const HackuText = (() => {
       quickOrders: "我的訂單到哪了？",
     },
     en: {
-      title: "Shopping Assistant",
+      title: "Hack U Shop",
       brandSub: "AI price check & buying",
       language: "Language",
       close: "Close",

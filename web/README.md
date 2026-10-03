@@ -1,4 +1,4 @@
-# Shopping assistant
+# Hack U Shop — web app
 
 A chat page that researches real products, in Hong Kong by default or in one store or country the user names, and buys them through Stripe Checkout. It also answers ordinary questions. The browser talks only to `web/server.py`. Keys stay in local `web/.env`.
 
