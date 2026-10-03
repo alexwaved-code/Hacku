@@ -807,7 +807,6 @@ function renderSideCart() {
       h(
         "div",
         { class: "cart-empty" },
-        h("span", { class: "cart-empty-icon", "aria-hidden": "true" }, cartIcon()),
         h("strong", {}, t("cartEmpty")),
         h("p", {}, t("cartEmptyHint"))
       )
@@ -845,30 +844,28 @@ function sideCartItem(item, fresh) {
       "aria-label": t("mentionTitle"),
       "aria-pressed": String(mentions.has(item.id)),
     },
-    lineIcon("M5 6h14v9H8l-3 3V6z"),
-    h("span", {}, t("mention"))
+    lineIcon("M5 6h14v9H8l-3 3V6z")
   );
   mention.addEventListener("click", () => toggleMention(item));
-  const change = (delta) => {
-    if (qty + delta < 1) {
-      row.classList.add("leaving");
-      setTimeout(() => {
-        HackuCart.remove(item.id);
-        updateCartCount();
-      }, 220);
-      return;
-    }
-    HackuCart.changeQty(item.id, delta);
-    updateCartCount();
-  };
-  const minus = h(
-    "button",
-    { type: "button", class: qty > 1 ? "qty-btn" : "qty-btn qty-remove", "aria-label": t(qty > 1 ? "less" : "remove"), title: t(qty > 1 ? "less" : "remove") },
-    qty > 1 ? "−" : trashIcon()
-  );
+  const drop = h("button", { type: "button", class: "cart-remove", title: t("remove"), "aria-label": t("remove") }, t("remove"));
+  drop.addEventListener("click", () => {
+    row.classList.add("leaving");
+    setTimeout(() => {
+      HackuCart.remove(item.id);
+      updateCartCount();
+    }, 180);
+  });
+  const minus = h("button", { type: "button", class: "qty-btn", "aria-label": t("less"), title: t("less"), disabled: qty <= 1 }, "−");
   const plus = h("button", { type: "button", class: "qty-btn", "aria-label": t("more"), title: t("more") }, "+");
-  minus.addEventListener("click", () => change(-1));
-  plus.addEventListener("click", () => change(1));
+  minus.addEventListener("click", () => {
+    if (qty <= 1) return;
+    HackuCart.changeQty(item.id, -1);
+    updateCartCount();
+  });
+  plus.addEventListener("click", () => {
+    HackuCart.changeQty(item.id, 1);
+    updateCartCount();
+  });
   row.append(
     picture,
     h(
@@ -880,7 +877,8 @@ function sideCartItem(item, fresh) {
         "div",
         { class: "side-cart-foot" },
         h("div", { class: "qty-step" }, minus, h("span", { class: "qty-count" }, String(qty)), plus),
-        h("strong", { class: "side-cart-price" }, line == null ? t("priceAtStore") : HackuMoney.text(line, item.currency))
+        h("strong", { class: "side-cart-price" }, line == null ? t("priceAtStore") : HackuMoney.text(line, item.currency)),
+        drop
       )
     )
   );
@@ -909,22 +907,16 @@ async function renderMandate(known = null) {
   const valid = end && !Number.isNaN(end.getTime());
   const until = valid ? HackuText.date(end) : "";
   const days = valid ? Math.max(0, Math.ceil((end - Date.now()) / 86400000)) : null;
-  const shield = lineIcon(mandate.valid ? "M12 3l7 3v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10V6l7-3zM9 12l2 2 4-4" : "M12 3l7 3v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10V6l7-3zM12 8v4M12 15.5v.5");
   box.className = `side-mandate ${mandate.valid ? "ok" : "missing"}`;
   box.replaceChildren(
-    h("span", { class: "mandate-icon" }, shield),
     h(
       "span",
       { class: "mandate-body" },
-      ...(mandate.valid
-        ? [
-            h("strong", {}, t("mandateOk")),
-            h("span", {}, t("capEach", caps.join(t("sep")))),
-            until ? h("span", { class: "mandate-days" }, days > 0 ? t("daysLeft", { days, until }) : t("endsToday")) : null,
-          ]
-        : [h("strong", {}, t("mandateMissing")), h("span", {}, t("mandateMissingHint"))])
-    ),
-    h("span", { class: "mandate-go", "aria-hidden": "true" }, lineIcon("M9 6l6 6-6 6"))
+      h("strong", {}, mandate.valid ? t("mandateOk") : t("mandateMissing")),
+      mandate.valid
+        ? h("span", {}, `${t("capEach", caps.join(t("sep")))}${until ? ` · ${days > 0 ? t("daysLeft", { days, until }) : t("endsToday")}` : ""}`)
+        : h("span", {}, t("mandateMissingHint"))
+    )
   );
   box.title = t(mandate.valid ? "editMandate" : "signMandate");
   box.hidden = false;
