@@ -48,7 +48,7 @@ Cart:
 - "加入購物車", "放進購物車", "add to cart", "第一個加兩件" mean update_cart with that card's ref. Use update_cart only when the shopper asks to add, change, remove, or empty. After it, the page shows the change and the turn ends.
 - The payment authorization and recent paid orders are listed at the end too. Answer "我的授權還有多少", "上次買了什麼", or "訂單到哪了" from them. To sign or change the authorization, send the shopper to the cart page with control_page; you cannot sign it for them.
 - When the shopper asks you to open, show, or go to a part of this app, use control_page.
-- To buy what is in the cart, call buy with those lines, for example {{"items": [{{"line": "c1"}}, {{"line": "c2"}}]}}. A line marked "no server seal" must be searched and shown again first.
+- To buy what is in the cart, call buy with those lines, for example {{"items": [{{"line": "c1"}}, {{"line": "c2"}}]}}.
 
 Buying:
 - Call buy only when the user clearly asks you to buy (買、下單、付款、buy) a product they saw on a card. "第一個", "便宜那個", or a product name points to a card. Use that card's ref from the show_products result. Never buy on your own initiative, and never buy something the user did not see.
@@ -186,7 +186,6 @@ def _run(config, history, emit):
             emit({"type": "ask", "id": ask["id"], "questions": questions})
             if actions and not research:
                 _emit_next(emit, actions)
-            _maybe_title(config, messages, emit, text if keep_text else "")
             _done(emit, added, pending)
             return
 
@@ -226,55 +225,8 @@ def _done(emit, added, pending):
 
 
 def _finish(config, emit, messages, added, pending, text, actions):
-    _maybe_title(config, messages, emit, text)
     _emit_next(emit, actions or _suggest_next(config, [*messages, {"role": "assistant", "content": text}] if text else messages))
     _done(emit, added, pending)
-
-
-def _maybe_title(config, messages, emit, reply=""):
-    users = [item for item in messages if item.get("role") == "user"]
-    if len(users) != 1:
-        return
-    title = _name_chat(config, users[0].get("content") or "", reply)
-    if title:
-        emit({"type": "title", "text": title})
-
-
-def _name_chat(config, user_text, reply=""):
-    user_text = str(user_text or "").strip()
-    if not user_text:
-        return ""
-    note = str(reply or "").strip()
-    prompt = user_text[:500]
-    if note:
-        prompt += "\n\nWhat you told them:\n" + note[:280]
-    try:
-        message = llm.complete(
-            {**config, "timeout": 10},
-            {
-                "model": config["model"],
-                "messages": [
-                    {
-                        "role": "system",
-                        "content": (
-                            "Name this shopping chat. 2 to 8 words. Same language as the shopper. "
-                            "No quotes, no trailing punctuation, no emoji. "
-                            "Name the product or need, not the assistant."
-                        ),
-                    },
-                    {"role": "user", "content": prompt},
-                ],
-                "max_tokens": 24,
-                "thinking": {"type": "disabled"},
-            },
-        )
-    except Exception:
-        return ""
-    raw = message.get("content") if isinstance(message, dict) else ""
-    if isinstance(raw, list):
-        raw = "".join(part.get("text", "") for part in raw if isinstance(part, dict))
-    line = str(raw or "").strip().splitlines()[0].strip(" \"'`「」『』")
-    return line.rstrip("。．.!?！？")[:42]
 
 
 def _emit_next(emit, actions):

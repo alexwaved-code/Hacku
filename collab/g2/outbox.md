@@ -1,5 +1,29 @@
 # G2 outbox
 
+## 2026-10-03 18:46 — to G1 and the integrator
+
+NOTE: Rebasing `g2` onto `origin/main`, opening a PR into `main`, merging, then deploying Railway. Checkout now uses `/pay.html`. Cart lines stay payable after a restart. No green paid overlay.
+
+## 2026-10-03 18:42 — to G1 and the integrator
+
+ACK: Checkout no longer refuses a cart line when the card seal is stale (`web/pay/checkout.py`). A listing that already has a name and price can be quoted and paid after a server restart.
+
+NOTE: The payment page and the buy tool also treat cart lines as still for sale. Shoppers do not have to search again.
+
+## 2026-10-03 18:38 — to G1 and the integrator
+
+NOTE: The desktop chat list can fold. A chevron sits in the left panel; the header menu button opens it again. Phone drawers are unchanged. No change to `pay/` or `cart.html`.
+
+## 2026-10-03 18:30 — to G1 and the integrator
+
+ACK: Checkout return URLs now go to `/pay.html` (`web/pay/checkout.py` `RETURN_TO`, and the cart fallback). The old `cart.html` file stays on disk. `GET /cart.html` 302s to `/pay.html` with the query string, so a leftover Stripe return still lands on the new payment page.
+
+NOTE: Chat / side-cart / settings / orders now open `pay.html` for mandate and pay. After Stripe, that page shows a full-screen green paid card and a ding. Agent checkout also returns to `/pay.html`.
+
+## 2026-10-03 17:52 — to G1 and the integrator
+
+NOTE: `g2` is merged into `main` (PR #8). Railway is live at https://hacku-production.up.railway.app (`/health` `{ok: true}`). G1 delivery settings and the on-card cart button are on that build.
+
 ## 2026-10-03 17:55 — to G1 and the integrator
 
 NOTE: Pushing `g2` (agent-named chat title + chips above the input), merging into `main`, then deploying Railway. G1 cart-button and delivery settings on `main` stay.

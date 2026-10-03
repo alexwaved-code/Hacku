@@ -186,29 +186,6 @@ class HarnessTest(TempData):
         self.assertEqual(len(opened), 1)
         self.assertEqual(events[-1]["messages"][-1]["content"], "你好")
 
-    def test_first_turn_emits_an_agent_title(self):
-        with mock.patch.object(harness.llm, "complete", return_value={"content": "「通勤降噪耳機。」"}):
-            events, opened = self.run_turn(FakeStream([say("你好")]))
-        title = next(event for event in events if event["type"] == "title")
-        self.assertEqual(title["text"], "通勤降噪耳機")
-        kinds = [event["type"] for event in events]
-        self.assertLess(kinds.index("title"), kinds.index("done"))
-
-    def test_later_turns_keep_the_title(self):
-        history = [
-            {"role": "user", "content": "買耳機"},
-            {"role": "assistant", "content": "這款不錯"},
-            {"role": "user", "content": "更便宜的"},
-        ]
-        events = []
-        with (
-            mock.patch.object(harness.llm, "open_stream", return_value=FakeStream([say("這款更平。")])),
-            mock.patch.object(harness.llm, "complete", return_value={"content": "不該改標題"}),
-            mock.patch.object(harness, "run_tool", fake_tools),
-        ):
-            harness.run(CONFIG, history, events.append)
-        self.assertFalse(any(event["type"] == "title" for event in events))
-
     def test_next_steps_follow_the_reply(self):
         actions = {
             "actions": [
@@ -299,10 +276,10 @@ class HarnessTest(TempData):
         self.assertEqual(len(opened), 1)
         token = tools.set_cart([self.cart_line(sealed=False)])
         try:
-            refused = tools.buy([{"line": "c1"}])
+            bought = tools.buy([{"line": "c1"}])
         finally:
             tools.CART.reset(token)
-        self.assertFalse(refused["ok"])
+        self.assertTrue(bought["ok"])
 
     def test_refs_from_before_a_restart_never_match_new_products(self):
         ref = tools._remember(offer())
@@ -327,7 +304,7 @@ class HarnessTest(TempData):
         self.assertEqual(len(opened), 1)
         result = next(e for e in events if e["type"] == "tool_result")
         self.assertEqual(result["ui"], {"kind": "page", "action": "cart_page"})
-        self.assertIn("購物車頁面", "".join(e["text"] for e in events if e["type"] == "delta"))
+        self.assertIn("付款頁", "".join(e["text"] for e in events if e["type"] == "delta"))
         self.assertFalse(tools.control_page("delete_everything")["ok"])
 
     def test_authorization_and_orders_are_in_the_prompt(self):

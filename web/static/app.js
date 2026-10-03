@@ -16,6 +16,7 @@ const els = {
   sideCartPanel: $("#side-cart-panel"),
   cartToggle: $("#cart-toggle"),
   openChats: $("#open-chats"),
+  foldChats: $("#fold-chats"),
   chatTitle: $("#chat-title"),
   scrim: $(".scrim"),
 };
@@ -24,6 +25,7 @@ const narrowScreen = window.matchMedia("(max-width: 900px)");
 const CHAT_KEY = "hacku.chat";
 const CHATS_KEY = "hacku.chats";
 const CURRENT_KEY = "hacku.currentChat";
+const CHATS_FOLD_KEY = "hacku.chatsFolded";
 const IDLE_TIMEOUT_MS = 75000;
 const GREETING = "想買什麼？說出預算、用途，或想逛的商店，我幫你上網查。其他問題也可以問我。";
 const SKELETON_CARDS = 5;
@@ -97,7 +99,10 @@ els.cartLink?.addEventListener("click", (event) => {
   if (openDrawer(els.sideCartPanel)) event.preventDefault();
   else saveChat();
 });
-els.openChats?.addEventListener("click", () => openDrawer(els.sideChats));
+els.openChats?.addEventListener("click", () => {
+  if (!openDrawer(els.sideChats)) setChatsFolded(false);
+});
+els.foldChats?.addEventListener("click", () => setChatsFolded(true, true));
 els.scrim?.addEventListener("click", closeDrawers);
 document.querySelectorAll("[data-close]").forEach((button) => button.addEventListener("click", closeDrawers));
 els.cartToggle?.addEventListener("click", () => {
@@ -141,6 +146,11 @@ window.addEventListener("pagehide", saveChat);
 setupVoice();
 document.querySelectorAll("[data-lang]").forEach((button) => button.addEventListener("click", () => setLanguage(button.dataset.lang)));
 HackuText.apply();
+try {
+  setChatsFolded(localStorage.getItem(CHATS_FOLD_KEY) === "1");
+} catch {
+  setChatsFolded(false);
+}
 updateCartCount();
 renderMandate();
 
@@ -567,6 +577,7 @@ function setLanguage(lang) {
   renderMandate(lastMandate);
   document.querySelector("#compare-bar")?.remove();
   if (comparing.size) syncCompare();
+  setChatsFolded(document.body.classList.contains("chats-folded"));
 }
 
 /* ---------- Sending ---------- */
@@ -604,6 +615,8 @@ function takePendingAsk(payload) {
 async function runTurn(display, entries) {
   els.list.querySelectorAll(".follow-ups, .turn-quick, .act-retry").forEach((node) => node.remove());
   const userItem = appendUser(display);
+  const existing = loadChats().find((chat) => chat.id === currentChatId());
+  if (!existing?.renamed) paintChatTitle(display);
   const turn = createTurn();
   const base = state.thread.length;
   state.thread.push(...entries);
@@ -670,7 +683,7 @@ function runAfterTurn() {
     saveChat();
     location.href = href;
   }, 900);
-  if (action === "cart_page") go("cart.html");
+  if (action === "cart_page") go("pay.html");
   else if (action === "orders_page") go("orders.html");
   else if (action === "new_chat") setTimeout(resetChat, 900);
   else if (action === "chinese") setLanguage("zh");
@@ -736,7 +749,6 @@ async function streamChat(controller, turn) {
         else if (event.type === "phase") turn.phase(event.phase);
         else if (event.type === "ask") turn.ask(event);
         else if (event.type === "next") setQuick(event.actions);
-        else if (event.type === "title") applyAgentTitle(event.text);
         else if (event.type === "error") throw new Error(event.message || t("agentError"));
         else if (event.type === "done") added = Array.isArray(event.messages) ? event.messages : [];
       }
@@ -992,6 +1004,19 @@ function closeDrawers() {
   document.querySelectorAll(".side.open").forEach((panel) => panel.classList.remove("open"));
   if (els.scrim) els.scrim.hidden = true;
   document.body.classList.remove("drawer-open");
+}
+
+function setChatsFolded(folded, focus) {
+  document.body.classList.toggle("chats-folded", folded);
+  try {
+    localStorage.setItem(CHATS_FOLD_KEY, folded ? "1" : "0");
+  } catch {
+    /* The choice lasts for this page only. */
+  }
+  els.openChats?.setAttribute("aria-expanded", String(!folded));
+  els.openChats?.setAttribute("aria-label", folded ? t("showChats") : t("chatHistory"));
+  els.openChats?.setAttribute("title", folded ? t("showChats") : t("chatHistory"));
+  if (folded && focus) els.openChats?.focus();
 }
 
 function setBusy(busy) {
@@ -1278,42 +1303,6 @@ function paintChatTitle(title) {
   document.title = text === t("newChat") ? t("title") : `${text} · ${t("title")}`;
 }
 
-function applyAgentTitle(text) {
-  const title = cleanTitle(text);
-  if (!title) return;
-  const id = currentChatId();
-  const chats = loadChats();
-  const previous = chats.find((item) => item.id === id);
-  if (previous?.renamed) return;
-  const rest = chats.filter((item) => item.id !== id);
-  try {
-    localStorage.setItem(
-      CHATS_KEY,
-      JSON.stringify(
-        [
-          {
-            id,
-            title,
-            named: true,
-            renamed: false,
-            pinned: !!previous?.pinned,
-            updated: Date.now(),
-            thread: previous?.thread ?? state.thread,
-            view: previous?.view ?? [],
-            openAsk: previous?.openAsk ?? state.openAsk ?? null,
-            next: previous?.next ?? lastQuick,
-          },
-          ...rest,
-        ].slice(0, 30)
-      )
-    );
-  } catch {
-    /* The conversation list could not be stored. */
-  }
-  paintChatTitle(title);
-  renderChatList();
-}
-
 function saveChat() {
   const view = snapshotView();
   const payload = {
@@ -1331,11 +1320,10 @@ function saveChat() {
   if (!spoken) return;
   const previous = loadChats().find((chat) => chat.id === currentChatId());
   const chats = loadChats().filter((chat) => chat.id !== currentChatId());
-  const kept = previous?.renamed || previous?.named;
+  const title = previous?.renamed ? previous.title : spoken.slice(0, 42);
   chats.unshift({
     id: currentChatId(),
-    title: kept && previous.title ? previous.title : previous?.title || t("newChat"),
-    named: !!previous?.named,
+    title,
     renamed: !!previous?.renamed,
     pinned: !!previous?.pinned,
     updated: Date.now(),
@@ -1346,6 +1334,7 @@ function saveChat() {
   } catch {
     /* The conversation list could not be stored. */
   }
+  paintChatTitle(title);
   renderChatList();
 }
 
@@ -1822,6 +1811,12 @@ function trashIcon() {
   return lineIcon("M5 7h14M9 7V5h6v2M8 7l1 12h6l1-12");
 }
 
+function paidMark() {
+  const svg = lineIcon("M6.8 12.4l3.3 3.3 7.1-7.4");
+  svg.setAttribute("class", "receipt-mark");
+  return svg;
+}
+
 function cartIcon() {
   const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
   svg.setAttribute("viewBox", "0 0 24 24");
@@ -1964,7 +1959,7 @@ function receiptCard(receipt) {
       { class: "receipt refused" },
       h("p", { class: "receipt-title" }, t("notPaid")),
       h("p", { class: "receipt-line" }, receipt.reason || t("payRefused")),
-      h("a", { class: "receipt-link", href: "cart.html" }, t("fixMandate"))
+      h("a", { class: "receipt-link", href: "pay.html" }, t("fixMandate"))
     );
   }
   const items = (receipt.items || []).map((entry) =>
@@ -1973,12 +1968,16 @@ function receiptCard(receipt) {
   return h(
     "div",
     { class: "receipt paid" },
-    h("p", { class: "receipt-title" }, t("paid", HackuMoney.text(receipt.amount, receipt.currency))),
-    h("ul", { class: "receipt-items" }, items),
-    receipt.ship_to ? h("p", { class: "receipt-line" }, t("shipTo", receipt.ship_to)) : null,
-    h("p", { class: "receipt-line" }, t(receipt.live ? "paidLive" : "paidTest")),
-    receipt.hash ? h("p", { class: "receipt-line mono" }, t("record", receipt.hash.slice(0, 12))) : null,
-    h("a", { class: "receipt-link", href: "orders.html" }, t(receipt.live ? "trackOrder" : "seeOrder"))
+    paidMark(),
+    h(
+      "div",
+      { class: "receipt-body" },
+      h("p", { class: "receipt-title" }, t("paid", HackuMoney.text(receipt.amount, receipt.currency))),
+      h("ul", { class: "receipt-items" }, items),
+      receipt.ship_to ? h("p", { class: "receipt-line" }, t("shipTo", receipt.ship_to)) : null,
+      h("p", { class: "receipt-line" }, t("paidTest")),
+      receipt.hash ? h("p", { class: "receipt-line mono" }, t("record", receipt.hash.slice(0, 12))) : null
+    )
   );
 }
 

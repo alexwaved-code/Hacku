@@ -59,6 +59,14 @@ class Handler(SimpleHTTPRequestHandler):
 
     def do_GET(self):
         url = urlparse(self.path)
+        if url.path == "/cart.html":
+            dest = "/pay.html"
+            if url.query:
+                dest += "?" + url.query
+            self.send_response(302)
+            self.send_header("Location", dest)
+            self.end_headers()
+            return
         if url.path == "/health":
             self.send_json(200, {"ok": True})
             return
@@ -75,6 +83,15 @@ class Handler(SimpleHTTPRequestHandler):
         super().do_GET()
 
     def do_HEAD(self):
+        url = urlparse(self.path)
+        if url.path == "/cart.html":
+            dest = "/pay.html"
+            if url.query:
+                dest += "?" + url.query
+            self.send_response(302)
+            self.send_header("Location", dest)
+            self.end_headers()
+            return
         if self.is_hidden():
             self.send_error(404)
             return
