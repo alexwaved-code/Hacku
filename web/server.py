@@ -12,7 +12,7 @@ import traceback
 import config
 import llm
 from agent import harness, tools
-from pay import checkout, mandate
+from pay import checkout, mandate, wallet
 from shop import browser
 
 MAX_BODY = 600_000
@@ -25,11 +25,15 @@ PAY_ROUTES = (
     "/api/fulfil/start",
     "/api/fulfil/placed",
     "/api/fulfil/refund",
+    "/api/wallet/setup",
+    "/api/wallet/forget",
 )
 GET_ROUTES = {
     "/api/mandate": mandate.view,
     "/api/orders": checkout.recent,
     "/api/fulfil": checkout.fulfilment,
+    "/api/wallet": wallet.view,
+    "/api/log": checkout.log,
 }
 
 
@@ -73,6 +77,10 @@ class Handler(SimpleHTTPRequestHandler):
         if url.path == "/api/checkout/status":
             session = (parse_qs(url.query).get("session") or [""])[0]
             self.pay_reply(lambda: checkout.status(session))
+            return
+        if url.path == "/api/wallet/confirm":
+            session = (parse_qs(url.query).get("session") or [""])[0]
+            self.pay_reply(lambda: wallet.confirm(session))
             return
         if url.path in GET_ROUTES:
             self.pay_reply(GET_ROUTES[url.path])
@@ -168,6 +176,10 @@ class Handler(SimpleHTTPRequestHandler):
             return checkout.create(payload.get("items"), via="agent")
         if path == "/api/mandate/revoke":
             return mandate.revoke()
+        if path == "/api/wallet/setup":
+            return wallet.setup(payload.get("ship"))
+        if path == "/api/wallet/forget":
+            return wallet.forget()
         if path == "/api/fulfil/start":
             return start_fulfil(payload.get("id"))
         if path == "/api/fulfil/placed":
@@ -210,14 +222,16 @@ class Handler(SimpleHTTPRequestHandler):
         self.wfile.write(raw)
 
 
-def agent_quote(items):
+def agent_pay(items):
     try:
+        if wallet.saved():
+            return {"ok": True, **checkout.charge(items, via="agent")}
         return {"ok": True, **checkout.quote(items)}
     except checkout.CheckoutError as error:
-        return {"ok": False, "reason": str(error)}
+        return {"ok": False, "reason": str(error), "rule": (error.detail or {}).get("rule")}
 
 
-tools.set_quoter(agent_quote)
+tools.set_quoter(agent_pay)
 
 
 def agent_app_state():
@@ -225,6 +239,7 @@ def agent_app_state():
     orders = checkout.recent(5)["orders"]
     return {
         "payment_authorization": {key: view.get(key) for key in ("valid", "caps", "expires", "detail")},
+        "saved_card": wallet.view(),
         "recent_paid_orders": [
             {
                 "at": order.get("at"),

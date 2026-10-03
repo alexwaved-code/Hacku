@@ -228,8 +228,8 @@ TOOL_SCHEMAS = [
         "function": {
             "name": BUY_TOOL,
             "description": (
-                "Prepare an order for products shown on cards or lines in the shopper's cart. Nothing is paid by this tool. "
-                "The page shows the order with a pay button that opens Stripe, where the shopper pays and gives a delivery address. "
+                "Pay for products shown on cards or lines in the shopper's cart, inside the signed mandate. "
+                "With a saved card it charges at once and returns the receipt; otherwise the page shows the order with a pay button that opens Stripe. "
                 "Call it only when the shopper clearly asks to buy specific products from the cards or the cart. All items must share one currency. "
                 "It is refused at once when the mandate does not cover the total, a cooling period is open, "
                 "or, with real payments, the order is over the real-payment cap; the result then says why."
@@ -298,7 +298,11 @@ _links = ThreadPoolExecutor(max_workers=6, thread_name_prefix="links")
 
 
 def set_quoter(quote):
-    """quote(items) checks sealed card items without charging. Returns {'ok': True, total, ...} or {'ok': False, 'reason'}."""
+    """quote(items) runs the payment gates on sealed card items. With a saved card it also charges.
+
+    Returns {'ok': True, 'paid': True, amount, hash, ...} when charged, {'ok': True, total, ...} when the
+    shopper still has to pay, or {'ok': False, 'reason', 'rule'} when a gate stopped it.
+    """
     global _quoter
     _quoter = quote
 
@@ -585,9 +589,11 @@ def buy(entries):
                 f"沒有建立訂單。{reason}" + (" 可以到購物車頁面修改付款授權。" if about_mandate else ""),
                 f"No order was created. {reason}" + (" You can change the payment authorization on the cart page." if about_mandate else ""),
             ),
-            "model": {"paid": False, "reason": reason},
-            "ui": {"kind": "receipt", "paid": False, "reason": reason},
+            "model": {"paid": False, "reason": reason, "rule": result.get("rule")},
+            "ui": {"kind": "receipt", "paid": False, "reason": reason, "rule": result.get("rule")},
         }
+    if result.get("paid"):
+        return _paid(result)
     order = {key: result.get(key) for key in ("total", "currency", "cap", "live")}
     total = money.text(result["total"], result["currency"])
     lines = say("、", ", ").join(f"{line['name']} × {line['qty']}" for line in result["items"])
@@ -611,6 +617,43 @@ def buy(entries):
             ),
         },
         "ui": {"kind": "order", **order, "lines": result["items"], "items": payload},
+    }
+
+
+def _paid(result):
+    total = money.text(result["amount"], result["currency"])
+    card = result.get("card") or {}
+    lines = say("、", ", ").join(f"{item['name']} × {item['qty']}" for item in result["items"])
+    record = (result.get("hash") or "")[:12]
+    return {
+        "ok": True,
+        "summary": say(f"已付 {total}", f"Paid {total}"),
+        "reply": say(
+            f"已用存好的卡（尾號 {card.get('last4')}）付款 {total}：{lines}。紀錄 {record}。",
+            f"Paid {total} with the saved card ending {card.get('last4')}: {lines}. Record {record}.",
+        ),
+        "model": {
+            "paid": True,
+            "total": result["amount"],
+            "currency": result["currency"],
+            "items": [{"name": item["name"], "qty": item["qty"]} for item in result["items"]],
+            "record": record,
+            "card_last4": card.get("last4"),
+            "ship_to": result.get("ship_to"),
+            "live": bool(result.get("live")),
+            "note": "Paid now with the saved card, inside the signed mandate. Tell the shopper it is paid, the total, and the record.",
+        },
+        "ui": {
+            "kind": "receipt",
+            "paid": True,
+            "amount": result["amount"],
+            "currency": result["currency"],
+            "items": result["items"],
+            "hash": result.get("hash"),
+            "ship_to": result.get("ship_to"),
+            "live": bool(result.get("live")),
+            "card": card,
+        },
     }
 
 

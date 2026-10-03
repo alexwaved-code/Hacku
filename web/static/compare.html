@@ -3,27 +3,26 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>付款 · Hack U Shop</title>
+    <title>人手與助理實測 · Hack U Shop</title>
     <link rel="icon" href="logo.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="styles.css" />
     <link rel="stylesheet" href="pay-ui.css" />
+    <link rel="stylesheet" href="compare.css" />
   </head>
   <body class="pay-body">
     <div class="pay-app">
       <header class="pay-bar">
         <a class="pay-back" href="./" data-i18n="payBackChat">← 返回對話</a>
-        <h1 data-i18n="payTitle">付款</h1>
+        <h1 id="compare-title">人手與助理實測</h1>
         <div class="lang-switch" role="group" data-i18n-attr="aria-label:language" aria-label="語言">
           <button type="button" data-lang="zh" aria-pressed="true">中</button>
           <button type="button" data-lang="en" aria-pressed="false">EN</button>
         </div>
       </header>
-      <main id="pay-root" class="pay-root"></main>
+      <main id="compare-root" class="pay-root"></main>
     </div>
     <script src="money.js"></script>
-    <script src="cart-store.js"></script>
-    <script src="profile-store.js"></script>
     <script src="i18n.js"></script>
-    <script src="pay-ui.js"></script>
+    <script src="compare.js"></script>
   </body>
 </html>

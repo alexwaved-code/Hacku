@@ -67,10 +67,16 @@ def revoke(at=None):
 
 def problem(currency=None, total=None, at=None):
     """None when the current mandate covers this order, otherwise the reason in plain words."""
+    found = check(currency, total, at)
+    return found[1] if found else None
+
+
+def check(currency=None, total=None, at=None):
+    """None when the current mandate covers this order, otherwise (rule, reason)."""
     at = at or now()
     with store.db() as conn:
         row = _latest(conn)
-    return _problem(row, currency, total, at)
+    return _check(row, currency, total, at)
 
 
 def view(at=None):
@@ -94,22 +100,27 @@ def view(at=None):
 
 
 def _problem(row, currency, total, at):
+    found = _check(row, currency, total, at)
+    return found[1] if found else None
+
+
+def _check(row, currency, total, at):
     if row is None:
-        return "還沒有付款授權。請先設定每筆上限並簽署。"
+        return "mandate.missing", "還沒有付款授權。請先設定每筆上限並簽署。"
     document = json.loads(row["document"])
     if not hmac.compare_digest(row["signature"], _sign(document)):
-        return "授權紀錄的簽章對不上，請重新簽署。"
+        return "mandate.signature", "授權紀錄的簽章對不上，請重新簽署。"
     if row["revoked_at"]:
-        return "你已撤銷授權。"
+        return "mandate.revoked", "你已撤銷授權。"
     if at > datetime.fromisoformat(document["expirationDate"]):
-        return "授權已過期，請重新簽署。"
+        return "mandate.expired", "授權已過期，請重新簽署。"
     if currency is None:
         return None
     caps = document["credentialSubject"]["perOrderCaps"]
     if currency not in caps:
-        return f"授權沒有涵蓋 {currency}，請加上這個幣別的每筆上限。"
+        return "mandate.currency", f"授權沒有涵蓋 {currency}，請加上這個幣別的每筆上限。"
     if total is not None and total > caps[currency]:
-        return f"這筆 {money.text(total, currency)} 超過授權的每筆上限 {money.text(caps[currency], currency)}。"
+        return "mandate.per_order_cap", f"這筆 {money.text(total, currency)} 超過授權的每筆上限 {money.text(caps[currency], currency)}。"
     return None
 
 

@@ -9,6 +9,8 @@ let orders = null;
 let editing = false;
 let notice = null;
 let paid = null;
+let card = null;
+let log = null;
 
 function money(amount, currency) {
   return HackuMoney.text(amount, currency) || t("priceAtStore");
@@ -95,6 +97,115 @@ function render() {
   const all = groups(items);
   root.append(itemsCard(items, all));
   root.append(mandateCard(all));
+  root.append(walletCard());
+  root.append(logCard());
+  if (location.hash === "#log") document.querySelector("#log")?.scrollIntoView();
+}
+
+function walletCard() {
+  const box = el("section", "pay-card", el("h2", "", t("walletTitle")));
+  if (card?.saved) {
+    box.append(el("p", "pay-status ok", t("walletSaved", { brand: brandName(card.brand), last4: card.last4 })), el("p", "pay-hint", t("walletAgentPays")));
+    if (card.ship_to) box.append(el("p", "pay-hint", t("shipTo", card.ship_to)));
+    box.append(el("div", "pay-actions", button("pay-pill", t("walletForget"), () => forgetCard())));
+    return box;
+  }
+  const ship = shipFromProfile();
+  const save = button("pay-sign", t("walletSave"), () => saveCard(save, ship));
+  box.append(el("p", "pay-hint", t("walletNone")));
+  if (!ship.line1) box.append(el("p", "pay-hint", t("walletNoShip")));
+  box.append(el("div", "pay-actions", save));
+  return box;
+}
+
+function brandName(brand) {
+  const name = String(brand || "card");
+  return name === "amex" ? "American Express" : name.charAt(0).toUpperCase() + name.slice(1);
+}
+
+function shipFromProfile() {
+  const profile = typeof HackuProfile === "undefined" ? {} : HackuProfile.load();
+  const city = String(profile.district || "")
+    .split("-")
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ");
+  return { name: profile.consignee || "", phone: profile.phone || "", line1: profile.line1 || "", line2: profile.line2 || "", city };
+}
+
+async function saveCard(save, ship) {
+  save.disabled = true;
+  save.textContent = t("walletOpening");
+  try {
+    const response = await fetch("/api/wallet/setup", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ship }),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !data.url) throw new Error(data.error || t("payError"));
+    location.href = data.url;
+  } catch (error) {
+    notice = { kind: "error", text: error.message };
+    render();
+  }
+}
+
+async function forgetCard() {
+  try {
+    const response = await fetch("/api/wallet/forget", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error || t("payError"));
+    card = data;
+    notice = { kind: "ok", text: t("walletRemoved") };
+  } catch (error) {
+    notice = { kind: "error", text: error.message };
+  }
+  await refreshLog();
+}
+
+function logCard() {
+  const box = el("section", "pay-card pay-log", el("h2", "", t("logTitle")));
+  box.id = "log";
+  if (!log) return box;
+  box.append(el("p", `pay-status ${log.chain_ok ? "ok" : "off"}`, t(log.chain_ok ? "logIntact" : "logBroken")));
+  if (!log.entries.length) {
+    box.append(el("p", "pay-hint", t("logEmpty")));
+    return box;
+  }
+  const steps = t("logSteps");
+  const list = el("ol", "pay-log-list");
+  for (const entry of log.entries) list.append(logRow(entry, steps));
+  box.append(list);
+  return box;
+}
+
+function logRow(entry, steps) {
+  const when = new Date(entry.at);
+  const time = Number.isNaN(when.getTime()) ? entry.at : `${HackuText.date(when)} ${when.toTimeString().slice(0, 8)}`;
+  const amount = entry.total != null && entry.currency ? money(entry.total, entry.currency) : "";
+  const by = entry.by ? t("logBy")[entry.by] || entry.by : "";
+  let detail = [amount, by].filter(Boolean).join(" · ");
+  if (entry.step === "mandate_issued") detail = Object.entries(entry.caps || {}).map(([code, cap]) => t("capEach", money(cap, code))).join(t("sep"));
+  if (entry.step === "card_saved" || entry.step === "card_removed") detail = t("walletSaved", { brand: brandName(entry.brand), last4: entry.last4 });
+  if (entry.step === "paid" && entry.card) detail += ` · •${entry.card}`;
+  const row = el(
+    "li",
+    `pay-log-row ${entry.step === "refused" ? "pay-log-stop" : entry.step === "paid" ? "pay-log-paid" : ""}`,
+    el("span", "pay-log-time", time),
+    el("strong", "pay-log-step", steps[entry.step] || entry.step),
+    el("span", "pay-log-detail", detail),
+    el("code", "pay-log-hash", entry.hash.slice(0, 12))
+  );
+  if (entry.step === "refused") {
+    const cap = entry.cap != null && entry.currency ? ` · ${t("capEach", money(entry.cap, entry.currency))}` : "";
+    row.append(el("span", "pay-log-rule", `${t("logRule", entry.rule)}${cap}`), el("span", "pay-log-reason", entry.reason));
+  }
+  return row;
+}
+
+async function refreshLog() {
+  [card, log] = await Promise.all([load("/api/wallet"), load("/api/log")]);
+  render();
 }
 
 function doneCard(receipt) {
@@ -313,7 +424,7 @@ async function send(path, body, okText) {
   } catch (error) {
     notice = { kind: "error", text: error.message };
   }
-  render();
+  await refreshLog();
 }
 
 async function load(path) {
@@ -328,6 +439,17 @@ async function load(path) {
 async function finishReturn() {
   const params = new URLSearchParams(location.search);
   if (params.has("canceled")) notice = { kind: "info", text: t("payCanceled") };
+  const saved = params.get("card");
+  if (saved) {
+    try {
+      const response = await fetch(`/api/wallet/confirm?session=${encodeURIComponent(saved)}`);
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || t("payError"));
+      notice = { kind: "ok", text: t("walletDone") };
+    } catch (error) {
+      notice = { kind: "error", text: error.message };
+    }
+  }
   const session = params.get("paid");
   if (session) {
     try {
@@ -347,7 +469,7 @@ async function finishReturn() {
       notice = { kind: "error", text: error.message };
     }
   }
-  if (params.has("paid") || params.has("canceled")) history.replaceState(null, "", "pay.html");
+  if (params.has("paid") || params.has("canceled") || saved) history.replaceState(null, "", `pay.html${location.hash}`);
 }
 
 function button(className, label, onClick) {
@@ -381,9 +503,11 @@ document.querySelectorAll("[data-lang]").forEach((button) => {
 });
 
 finishReturn()
-  .then(() => Promise.all([load("/api/mandate"), load("/api/orders")]))
-  .then(([nextMandate, nextOrders]) => {
+  .then(() => Promise.all([load("/api/mandate"), load("/api/orders"), load("/api/wallet"), load("/api/log")]))
+  .then(([nextMandate, nextOrders, nextCard, nextLog]) => {
     mandate = nextMandate;
     orders = nextOrders;
+    card = nextCard;
+    log = nextLog;
     render();
   });

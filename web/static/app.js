@@ -1455,6 +1455,10 @@ function createTurn() {
         const entry = { ...event.ui, call: event.id };
         item._receipts.push(entry);
         receipts.append(paymentCard(entry));
+        if (entry.kind === "receipt" && entry.paid) {
+          HackuCart.removeMany((entry.items || []).map((line) => line.id));
+          updateCartCount();
+        }
         scrollToEnd();
       }
     },
@@ -1493,8 +1497,12 @@ function createTurn() {
           copy.lastChild.textContent = t("copyFailed");
         }
       });
-      const retry = h("button", { type: "button", class: "act-btn act-retry", title: t("regenerate") }, retryIcon(), t("regenerate"));
-      retry.addEventListener("click", onRetry);
+      // A turn that paid must not be run again: regenerating would repeat the purchase.
+      const paid = (item._receipts || []).some((entry) => entry.paid || entry.result?.paid);
+      const retry = paid
+        ? null
+        : h("button", { type: "button", class: "act-btn act-retry", title: t("regenerate") }, retryIcon(), t("regenerate"));
+      retry?.addEventListener("click", onRetry);
       if (said) item.append(h("div", { class: "turn-actions" }, copy, retry));
       if (!state.pendingAsk && lastQuick.length) {
         item.append(
@@ -1951,7 +1959,8 @@ function receiptCard(receipt) {
       { class: "receipt refused" },
       h("p", { class: "receipt-title" }, t("notPaid")),
       h("p", { class: "receipt-line" }, receipt.reason || t("payRefused")),
-      h("a", { class: "receipt-link", href: "pay.html" }, t("fixMandate"))
+      receipt.rule ? h("p", { class: "receipt-line mono" }, t("logRule", receipt.rule)) : null,
+      h("a", { class: "receipt-link", href: receipt.rule ? "pay.html#log" : "pay.html" }, t(receipt.rule ? "seeLog" : "fixMandate"))
     );
   }
   const items = (receipt.items || []).map((entry) =>
@@ -1966,8 +1975,10 @@ function receiptCard(receipt) {
       { class: "receipt-body" },
       h("p", { class: "receipt-title" }, t("paid", HackuMoney.text(receipt.amount, receipt.currency))),
       h("ul", { class: "receipt-items" }, items),
+      receipt.card?.last4 ? h("p", { class: "receipt-line" }, t("paidCard", receipt.card.last4)) : null,
       receipt.ship_to ? h("p", { class: "receipt-line" }, t("shipTo", receipt.ship_to)) : null,
-      receipt.hash ? h("p", { class: "receipt-line mono" }, t("record", receipt.hash.slice(0, 12))) : null
+      receipt.hash ? h("p", { class: "receipt-line mono" }, t("record", receipt.hash.slice(0, 12))) : null,
+      receipt.hash ? h("a", { class: "receipt-link", href: "pay.html#log" }, t("seeLog")) : null
     )
   );
 }
