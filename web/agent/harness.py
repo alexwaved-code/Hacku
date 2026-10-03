@@ -186,6 +186,7 @@ def _run(config, history, emit):
             emit({"type": "ask", "id": ask["id"], "questions": questions})
             if actions and not research:
                 _emit_next(emit, actions)
+            _maybe_title(config, messages, emit, text if keep_text else "")
             _done(emit, added, pending)
             return
 
@@ -225,8 +226,55 @@ def _done(emit, added, pending):
 
 
 def _finish(config, emit, messages, added, pending, text, actions):
+    _maybe_title(config, messages, emit, text)
     _emit_next(emit, actions or _suggest_next(config, [*messages, {"role": "assistant", "content": text}] if text else messages))
     _done(emit, added, pending)
+
+
+def _maybe_title(config, messages, emit, reply=""):
+    users = [item for item in messages if item.get("role") == "user"]
+    if len(users) != 1:
+        return
+    title = _name_chat(config, users[0].get("content") or "", reply)
+    if title:
+        emit({"type": "title", "text": title})
+
+
+def _name_chat(config, user_text, reply=""):
+    user_text = str(user_text or "").strip()
+    if not user_text:
+        return ""
+    note = str(reply or "").strip()
+    prompt = user_text[:500]
+    if note:
+        prompt += "\n\nWhat you told them:\n" + note[:280]
+    try:
+        message = llm.complete(
+            {**config, "timeout": 10},
+            {
+                "model": config["model"],
+                "messages": [
+                    {
+                        "role": "system",
+                        "content": (
+                            "Name this shopping chat. 2 to 8 words. Same language as the shopper. "
+                            "No quotes, no trailing punctuation, no emoji. "
+                            "Name the product or need, not the assistant."
+                        ),
+                    },
+                    {"role": "user", "content": prompt},
+                ],
+                "max_tokens": 24,
+                "thinking": {"type": "disabled"},
+            },
+        )
+    except Exception:
+        return ""
+    raw = message.get("content") if isinstance(message, dict) else ""
+    if isinstance(raw, list):
+        raw = "".join(part.get("text", "") for part in raw if isinstance(part, dict))
+    line = str(raw or "").strip().splitlines()[0].strip(" \"'`「」『』")
+    return line.rstrip("。．.!?！？")[:42]
 
 
 def _emit_next(emit, actions):

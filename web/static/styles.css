@@ -1136,6 +1136,23 @@ body > .chat {
   border-bottom: 1px solid var(--line);
 }
 
+.chat-heading {
+  min-width: 0;
+  flex: 1;
+}
+
+#chat-title {
+  margin: 0;
+  overflow: hidden;
+  color: var(--ink);
+  font-size: 18px;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .header-actions {
   display: flex;
   flex-wrap: wrap;
@@ -1800,7 +1817,11 @@ a.card:hover .pic img {
 }
 
 #quick {
-  margin-top: 10px;
+  margin: 0 0 10px;
+}
+
+#quick .quick-row {
+  justify-content: flex-start;
 }
 
 #quick:empty {
@@ -3063,7 +3084,15 @@ a.card:hover .pic img {
 
 @media (min-width: 901px) {
   .app .chat-header {
+    padding: 16px 28px 14px;
+  }
+
+  .app .chat-header .header-actions {
     display: none;
+  }
+
+  .app .chat-header #chat-title {
+    font-size: 20px;
   }
 }
 

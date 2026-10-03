@@ -186,6 +186,29 @@ class HarnessTest(TempData):
         self.assertEqual(len(opened), 1)
         self.assertEqual(events[-1]["messages"][-1]["content"], "你好")
 
+    def test_first_turn_emits_an_agent_title(self):
+        with mock.patch.object(harness.llm, "complete", return_value={"content": "「通勤降噪耳機。」"}):
+            events, opened = self.run_turn(FakeStream([say("你好")]))
+        title = next(event for event in events if event["type"] == "title")
+        self.assertEqual(title["text"], "通勤降噪耳機")
+        kinds = [event["type"] for event in events]
+        self.assertLess(kinds.index("title"), kinds.index("done"))
+
+    def test_later_turns_keep_the_title(self):
+        history = [
+            {"role": "user", "content": "買耳機"},
+            {"role": "assistant", "content": "這款不錯"},
+            {"role": "user", "content": "更便宜的"},
+        ]
+        events = []
+        with (
+            mock.patch.object(harness.llm, "open_stream", return_value=FakeStream([say("這款更平。")])),
+            mock.patch.object(harness.llm, "complete", return_value={"content": "不該改標題"}),
+            mock.patch.object(harness, "run_tool", fake_tools),
+        ):
+            harness.run(CONFIG, history, events.append)
+        self.assertFalse(any(event["type"] == "title" for event in events))
+
     def test_next_steps_follow_the_reply(self):
         actions = {
             "actions": [

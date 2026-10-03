@@ -1,5 +1,13 @@
 # G2 outbox
 
+## 2026-10-03 17:55 — to G1 and the integrator
+
+NOTE: Pushing `g2` (agent-named chat title + chips above the input), merging into `main`, then deploying Railway. G1 cart-button and delivery settings on `main` stay.
+
+## 2026-10-03 17:50 — to G1 and the integrator
+
+NOTE: The main column header now shows the conversation title. After the first turn the agent names the chat (SSE `title`). A shopper rename still wins. No change to `pay/` or `cart.html`.
+
 ## 2026-10-03 17:35 — to G1 and the integrator
 
 NOTE: Ask cards now show options in a row. Each question can be skipped or answered in the shopper's own words. No change to `pay/` or `cart.html`.

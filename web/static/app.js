@@ -15,6 +15,7 @@ const els = {
   sideChats: $("#side-chats"),
   sideCartPanel: $("#side-cart-panel"),
   openChats: $("#open-chats"),
+  chatTitle: $("#chat-title"),
   scrim: $(".scrim"),
 };
 const narrowScreen = window.matchMedia("(max-width: 900px)");
@@ -539,6 +540,7 @@ function setLanguage(lang) {
   HackuText.set(lang);
   if (state.busy) {
     els.input.placeholder = t(state.pendingAsk ? "askPlaceholder" : "placeholder");
+    paintChatTitle();
   } else {
     const top = els.list.scrollTop;
     restoreChat();
@@ -718,6 +720,7 @@ async function streamChat(controller, turn) {
         else if (event.type === "phase") turn.phase(event.phase);
         else if (event.type === "ask") turn.ask(event);
         else if (event.type === "next") setQuick(event.actions);
+        else if (event.type === "title") applyAgentTitle(event.text);
         else if (event.type === "error") throw new Error(event.message || t("agentError"));
         else if (event.type === "done") added = Array.isArray(event.messages) ? event.messages : [];
       }
@@ -1008,6 +1011,7 @@ function resetChat() {
   setQuick([]);
   clearMentions();
   els.list.replaceChildren(welcomeItem());
+  paintChatTitle(t("newChat"));
   renderChatList();
   closeDrawers();
   els.input.focus();
@@ -1150,6 +1154,7 @@ function startRename(id, button) {
     if (title) {
       const chats = loadChats().map((item) => (item.id === id ? { ...item, title, renamed: true } : item));
       localStorage.setItem(CHATS_KEY, JSON.stringify(chats));
+      if (id === currentChatId()) paintChatTitle(title);
     }
     renderChatList();
   };
@@ -1196,6 +1201,7 @@ function restoreChat() {
   if (!saved) {
     setQuick([]);
     els.list.replaceChildren(welcomeItem());
+    paintChatTitle();
     return;
   }
   state.thread = Array.isArray(saved.thread) ? saved.thread : [];
@@ -1215,6 +1221,7 @@ function restoreChat() {
     els.input.placeholder = t("askPlaceholder");
   }
   setQuick(saved.next);
+  paintChatTitle();
 }
 
 function readChat() {
@@ -1225,6 +1232,65 @@ function readChat() {
   } catch {
     return null;
   }
+}
+
+function cleanTitle(text) {
+  return String(text || "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/^["'`「」『』]+|["'`「」『』]+$/g, "")
+    .replace(/[。．.!?！？]+$/g, "")
+    .slice(0, 42);
+}
+
+function chatHeading() {
+  const chat = loadChats().find((item) => item.id === currentChatId());
+  return (chat?.title || "").trim() || t("newChat");
+}
+
+function paintChatTitle(title) {
+  const text = cleanTitle(title) || chatHeading();
+  if (els.chatTitle) {
+    els.chatTitle.textContent = text;
+    els.chatTitle.title = text;
+  }
+  document.title = text === t("newChat") ? t("title") : `${text} · ${t("title")}`;
+}
+
+function applyAgentTitle(text) {
+  const title = cleanTitle(text);
+  if (!title) return;
+  const id = currentChatId();
+  const chats = loadChats();
+  const previous = chats.find((item) => item.id === id);
+  if (previous?.renamed) return;
+  const rest = chats.filter((item) => item.id !== id);
+  try {
+    localStorage.setItem(
+      CHATS_KEY,
+      JSON.stringify(
+        [
+          {
+            id,
+            title,
+            named: true,
+            renamed: false,
+            pinned: !!previous?.pinned,
+            updated: Date.now(),
+            thread: previous?.thread ?? state.thread,
+            view: previous?.view ?? [],
+            openAsk: previous?.openAsk ?? state.openAsk ?? null,
+            next: previous?.next ?? lastQuick,
+          },
+          ...rest,
+        ].slice(0, 30)
+      )
+    );
+  } catch {
+    /* The conversation list could not be stored. */
+  }
+  paintChatTitle(title);
+  renderChatList();
 }
 
 function saveChat() {
@@ -1240,13 +1306,15 @@ function saveChat() {
   } catch {
     /* The browser refused to store the chat. The cart still works. */
   }
-  const title = (view.find((entry) => entry.kind === "user")?.text || "").trim();
-  if (!title) return;
+  const spoken = (view.find((entry) => entry.kind === "user")?.text || "").trim();
+  if (!spoken) return;
   const previous = loadChats().find((chat) => chat.id === currentChatId());
   const chats = loadChats().filter((chat) => chat.id !== currentChatId());
+  const kept = previous?.renamed || previous?.named;
   chats.unshift({
     id: currentChatId(),
-    title: previous?.renamed ? previous.title : title.slice(0, 42),
+    title: kept && previous.title ? previous.title : previous?.title || t("newChat"),
+    named: !!previous?.named,
     renamed: !!previous?.renamed,
     pinned: !!previous?.pinned,
     updated: Date.now(),
