@@ -111,14 +111,18 @@
         </footer>
       </main>
       <aside class="side cart-panel" id="side-cart-panel" data-i18n-attr="aria-label:cart" aria-label="購物車">
-        <div class="cart-head">
-          <span class="cart-mark" aria-hidden="true">
-            <svg viewBox="0 0 24 24">
+        <div class="cart-toggle-wrap">
+          <button type="button" id="cart-toggle" class="cart-mark" data-i18n-attr="aria-label:cart" aria-label="購物車" aria-expanded="true">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
               <path d="M6 6h15l-1.6 9H8L6 6zm0 0L5 3H2" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
               <circle cx="9" cy="20" r="1.4" fill="currentColor"></circle>
               <circle cx="18" cy="20" r="1.4" fill="currentColor"></circle>
             </svg>
-          </span>
+          </button>
+          <span id="cart-toggle-count" class="cart-toggle-count" hidden></span>
+        </div>
+        <div class="cart-slide">
+        <div class="cart-head">
           <h2 data-i18n="cart">購物車</h2>
           <span id="side-count" class="count-badge" hidden></span>
           <button type="button" class="icon-btn drawer-close" data-close data-i18n-attr="aria-label:close" aria-label="關閉">
@@ -144,6 +148,7 @@
             <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2" fill="none" stroke="currentColor" stroke-width="2"></rect><path d="M8 11V8a4 4 0 0 1 8 0v3" fill="none" stroke="currentColor" stroke-width="2"></path></svg>
             <span data-i18n="payNote">Stripe 安全付款，付款前會再確認</span>
           </p>
+        </div>
         </div>
       </aside>
     </div>

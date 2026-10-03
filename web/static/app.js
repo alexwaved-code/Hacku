@@ -14,6 +14,7 @@ const els = {
   chatSearch: $("#chat-search"),
   sideChats: $("#side-chats"),
   sideCartPanel: $("#side-cart-panel"),
+  cartToggle: $("#cart-toggle"),
   openChats: $("#open-chats"),
   scrim: $(".scrim"),
 };
@@ -97,7 +98,22 @@ els.cartLink?.addEventListener("click", (event) => {
 els.openChats?.addEventListener("click", () => openDrawer(els.sideChats));
 els.scrim?.addEventListener("click", closeDrawers);
 document.querySelectorAll("[data-close]").forEach((button) => button.addEventListener("click", closeDrawers));
-narrowScreen.addEventListener("change", closeDrawers);
+els.cartToggle?.addEventListener("click", () => {
+  const button = els.cartToggle;
+  button.classList.remove("bounce");
+  void button.offsetWidth;
+  button.classList.add("bounce");
+  if (narrowScreen.matches) return;
+  const collapsed = els.sideCartPanel.classList.toggle("collapsed");
+  button.setAttribute("aria-expanded", String(!collapsed));
+});
+narrowScreen.addEventListener("change", () => {
+  closeDrawers();
+  if (narrowScreen.matches) {
+    els.sideCartPanel?.classList.remove("collapsed");
+    els.cartToggle?.setAttribute("aria-expanded", "true");
+  }
+});
 els.chatSearch?.addEventListener("input", renderChatList);
 els.chatSearch?.addEventListener("keydown", (event) => {
   if (event.key === "Escape") {
@@ -606,9 +622,14 @@ function renderSideCart() {
   cartSeen = new Set(items.map((item) => item.id));
   cartSeen.count = count;
   const badge = document.querySelector("#side-count");
+  const closedBadge = document.querySelector("#cart-toggle-count");
   if (badge) {
     badge.hidden = !count;
     badge.textContent = String(count);
+  }
+  if (closedBadge) {
+    closedBadge.hidden = !count;
+    closedBadge.textContent = String(count);
   }
   if (grew) {
     for (const node of [document.querySelector(".cart-mark"), badge]) {
