@@ -1,0 +1,186 @@
+.settings-dialog {
+  width: min(520px, calc(100vw - 32px));
+  max-height: calc(100dvh - 32px);
+  margin: auto;
+  padding: 18px 18px 20px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: var(--panel);
+  color: var(--ink);
+  box-shadow: 0 24px 64px rgba(28, 25, 21, 0.22);
+  overflow: auto;
+}
+
+.settings-dialog::backdrop {
+  background: rgba(28, 25, 21, 0.45);
+}
+
+.settings-bar {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.settings-bar h2 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 650;
+}
+
+.settings-x {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  margin: -4px -4px 0 0;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.settings-x:hover {
+  background: #ece8e1;
+}
+
+.settings-x svg {
+  width: 18px;
+  height: 18px;
+}
+
+.settings-dialog .settings {
+  max-width: none;
+}
+
+.chat-header > div:first-child {
+  flex: 1;
+  min-width: 0;
+}
+
+.header-links {
+  display: flex;
+  flex: none;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.header-links .lang-switch {
+  margin-left: 0;
+}
+
+.header-links .pill {
+  white-space: nowrap;
+}
+
+.settings {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  max-width: 560px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.field legend,
+.field > span {
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.field input,
+.field select {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #fff;
+  color: var(--ink);
+  font: inherit;
+}
+
+.field input:focus,
+.field select:focus {
+  outline: 2px solid var(--accent);
+  border-color: var(--ink);
+}
+
+.hint {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.methods {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.method {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #fff;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.method:has(input:checked) {
+  border-color: var(--ink);
+  background: #fff8e8;
+}
+
+.method input {
+  margin: 0;
+}
+
+.method img {
+  width: 48px;
+  height: 30px;
+  object-fit: contain;
+  flex: none;
+  border-radius: 4px;
+}
+
+.settings-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.settings-status:empty {
+  display: none;
+}
+
+.settings-status {
+  margin: 0;
+  font-size: 14px;
+}
+
+.settings-status.ok {
+  color: var(--good);
+}
+
+.settings-status.bad {
+  color: #991b1b;
+}

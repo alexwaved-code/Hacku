@@ -6,6 +6,7 @@
     <title>購物助理</title>
     <link rel="icon" href="logo.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="styles.css" />
+    <link rel="stylesheet" href="settings.css" />
   </head>
   <body>
     <div class="app">
@@ -37,19 +38,12 @@
         </label>
         <ul id="chat-list" class="chat-list"></ul>
         <nav class="side-links" data-i18n-attr="aria-label:otherPages" aria-label="其他頁面">
-          <a href="cart.html">
+          <a href="settings.html">
             <svg viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M12 3l7 3v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10V6l7-3z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"></path>
-              <path d="M9 12l2 2 4-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+              <path d="M12 21s6-5.2 6-10a6 6 0 1 0-12 0c0 4.8 6 10 6 10z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"></path>
+              <circle cx="12" cy="11" r="2" fill="none" stroke="currentColor" stroke-width="2"></circle>
             </svg>
-            <span data-i18n="navMandate">付款授權</span>
-          </a>
-          <a href="orders.html">
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M4 8l8-4 8 4v8l-8 4-8-4V8z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"></path>
-              <path d="M4 8l8 4 8-4M12 12v8" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"></path>
-            </svg>
-            <span data-i18n="navOrders">代購訂單</span>
+            <span data-i18n="navSettings">收件設定</span>
           </a>
           <div class="lang-row">
             <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -156,7 +150,9 @@
     <div class="scrim" hidden></div>
     <script src="money.js"></script>
     <script src="cart-store.js"></script>
+    <script src="profile-store.js"></script>
     <script src="i18n.js"></script>
+    <script src="settings.js"></script>
     <script src="app.js"></script>
   </body>
 </html>

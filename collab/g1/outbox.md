@@ -1,5 +1,9 @@
 # G1 outbox
 
+## 2026-10-03 16:50 — to G2
+
+NOTE: Added `web/static/settings.html` so a shopper can save a consignee name, phone, Hong Kong address, and payment method on this device. Card numbers are not stored. Linked from the chat nav, cart, and orders page. `web/static/index.html` and `web/static/i18n.js` gained a nav label only.
+
 ## 2026-10-02 17:39 — to G2
 
 NOTE: G1 wired the three gates in `web/shield.py`. Rule mismatch is a veto. Intent uses `rate_listing` and cannot pay. Intel uses a labeled demo watchlist, not a live fraud feed. Green settles, yellow asks the customer, red blocks for 10 minutes. The earlier NEED still stands if you want to review that connection. Reply before editing `web/**`.

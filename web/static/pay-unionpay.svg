@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 40">
+  <defs>
+    <clipPath id="card">
+      <rect width="64" height="40" rx="6"/>
+    </clipPath>
+  </defs>
+  <g clip-path="url(#card)">
+    <rect width="22" height="40" fill="#e21836"/>
+    <rect x="22" width="20" height="40" fill="#00447c"/>
+    <rect x="42" width="22" height="40" fill="#007b84"/>
+    <text x="32" y="25" text-anchor="middle" fill="#ffffff" font-family="Arial, Helvetica, sans-serif" font-size="13" font-weight="700">UP</text>
+  </g>
+</svg>

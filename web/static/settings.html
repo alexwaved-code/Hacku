@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>收件設定</title>
+    <link rel="icon" href="logo.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="styles.css" />
+    <link rel="stylesheet" href="cart.css" />
+    <link rel="stylesheet" href="settings.css" />
+  </head>
+  <body>
+    <main class="chat">
+      <header class="chat-header">
+        <div>
+          <h1 data-i18n="settingsTitle">收件設定</h1>
+          <p class="sub" data-i18n="settingsSub">收件人、電話、地址和付款方式只存在這台裝置。卡號在結帳時輸入，這裡不會保存。</p>
+        </div>
+        <div class="header-links">
+          <div class="lang-switch" role="group" data-i18n-attr="aria-label:language" aria-label="語言">
+            <button type="button" data-lang="zh" aria-pressed="true">中</button>
+            <button type="button" data-lang="en" aria-pressed="false">EN</button>
+          </div>
+          <a class="pill" href="index.html" data-i18n="backChat">返回對話</a>
+          <a class="pill" href="cart.html" data-i18n="cart">購物車</a>
+        </div>
+      </header>
+      <section class="cart">
+        <form id="settings" class="settings">
+          <label class="field">
+            <span data-i18n="consignee">收件人姓名</span>
+            <input id="consignee" name="consignee" type="text" maxlength="80" autocomplete="name" required />
+          </label>
+          <label class="field">
+            <span data-i18n="contact">聯絡電話</span>
+            <input id="phone" name="phone" type="tel" maxlength="24" inputmode="tel" autocomplete="tel" placeholder="9123 4567" required />
+          </label>
+          <label class="field">
+            <span data-i18n="address1">街道、大廈</span>
+            <input id="line1" name="line1" type="text" maxlength="120" autocomplete="address-line1" required />
+          </label>
+          <label class="field">
+            <span data-i18n="address2">樓層、單位（可留空）</span>
+            <input id="line2" name="line2" type="text" maxlength="120" autocomplete="address-line2" />
+          </label>
+          <label class="field">
+            <span data-i18n="district">地區</span>
+            <select id="district" name="district" autocomplete="address-level2" required></select>
+          </label>
+          <fieldset class="field">
+            <legend data-i18n="payment">付款方式</legend>
+            <p class="hint" data-i18n="paymentNote">只記下你想用哪一種。真正付款在 Stripe 結帳頁完成。</p>
+            <div class="methods" id="methods"></div>
+          </fieldset>
+          <div class="settings-actions">
+            <button type="submit" class="pay" data-i18n="saveSettings">儲存</button>
+            <button type="button" id="clear" class="pill" data-i18n="clearSettings">清除</button>
+            <p id="status" class="settings-status" role="status"></p>
+          </div>
+        </form>
+      </section>
+    </main>
+    <script src="profile-store.js"></script>
+    <script src="i18n.js"></script>
+    <script src="settings.js"></script>
+  </body>
+</html>
