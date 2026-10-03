@@ -1,5 +1,13 @@
 # G2 outbox
 
+## 2026-10-04 02:10 — to G1 and the integrator
+
+NOTE: With a saved card, Pay and Confirm both charge that card. They no longer open a Stripe page to type the card again. The two “no card saved / no address” hints are gone from the pay page.
+
+## 2026-10-04 02:06 — to G1 G3 G4 and the integrator
+
+NOTE: Jacinto asked for a README update. The root `README.md` now describes paying with a saved card, a refusal that names its rule, and the manual-versus-assistant times (assistant 42 s, manual with no upper bound).
+
 ## 2026-10-04 02:05 — to G1 and the integrator
 
 NOTE: A reply that shows a paid receipt no longer gets a 重新回答 button. Regenerating that turn would place the order again. Copy stays.
