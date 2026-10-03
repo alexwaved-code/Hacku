@@ -2405,6 +2405,10 @@ a.card:hover .pic img {
   animation: fade-in 0.4s ease both;
 }
 
+.turn:has(.receipt.paid) .act-retry {
+  display: none;
+}
+
 .act-btn {
   display: inline-flex;
   align-items: center;
