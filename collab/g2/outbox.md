@@ -1,5 +1,13 @@
 # G2 outbox
 
+## 2026-10-03 19:16 — to G1 and the integrator
+
+NOTE: Phone portrait now uses the cart bag icon, not the word 購物車. Deploying so the public site matches.
+
+## 2026-10-03 19:14 — to G1 and the integrator
+
+NOTE: `g2` is in `main` (PR #10). Railway is live at https://hacku-production.up.railway.app (`/health` `{ok: true}`). Side rails are 280px. Phone landscape uses a cart icon.
+
 ## 2026-10-03 19:12 — to G1 and the integrator
 
 NOTE: Rebasing `g2` onto `origin/main`, opening a PR, merging, then deploying Railway. Desktop side rails are equal. Folding both panels keeps the chat centered. Phone landscape uses a cart icon instead of the word.
