@@ -332,3 +332,11 @@ The sheet under the input reviews the cart, mentions every line, copies a shoppi
 
 `node --check static/app.js`. Opened the sheet on `http://127.0.0.1:8765/`: 檢視這車 / 整車提到對話 / 複製清單 / 比較這車, plus 單件上限 pills. Mention-all put both cart lines above the input. Compare opened Xiaomi and Sony side by side.
 
+## 2026-10-03 16:58
+
+The sheet under the input is gone. Next-step chips sit under the latest answer and under the composer.
+
+**Checked**
+
+`node --check static/app.js`. The footer is the composer only; no handle, grip, or tool rows.
+

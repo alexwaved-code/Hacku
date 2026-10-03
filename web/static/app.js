@@ -38,16 +38,6 @@ let cartSeen = null;
 let chatsSeen = null;
 let lastMandate = null;
 let lastQuick = [];
-let dockFlash = "";
-const BUDGET_KEY = "hacku.itemCap";
-const BUDGETS = [0, 300, 500, 1000, 2000];
-let sessionBudget = 0;
-try {
-  const saved = Number(sessionStorage.getItem(BUDGET_KEY));
-  if (BUDGETS.includes(saved)) sessionBudget = saved;
-} catch {
-  /* The cap lasts for this tab only. */
-}
 const comparing = new Map();
 const mentions = new Map();
 const MAX_COMPARE = 3;
@@ -86,10 +76,6 @@ document.addEventListener("keydown", (event) => {
   }
   if (event.key === "Escape" && state.busy) {
     state.controller?.abort();
-    return;
-  }
-  if (event.key === "Escape" && document.querySelector("#dock-sheet.open")) {
-    openDock(false);
     return;
   }
   if (event.key.toLowerCase() === "k" && (event.metaKey || event.ctrlKey) && els.chatSearch) {
@@ -299,7 +285,7 @@ function renderCapMeter(items) {
 }
 
 function actionChip(icon, label, prompt) {
-  return h("button", { type: "button", class: "quick-chip", onclick: () => { openDock(false); send(prompt); } }, icon, h("span", {}, label));
+  return h("button", { type: "button", class: "quick-chip", onclick: () => send(prompt) }, icon, h("span", {}, label));
 }
 
 function setQuick(actions) {
@@ -313,238 +299,14 @@ function setQuick(actions) {
     lastQuick.push({ label, prompt });
     if (lastQuick.length >= 5) break;
   }
-  renderDock();
+  renderQuick();
 }
 
-function openDock(open) {
-  const sheet = document.querySelector("#dock-sheet");
-  const toggle = document.querySelector("#dock-toggle");
-  if (!sheet) return;
-  const next = open === undefined ? !sheet.classList.contains("open") : !!open;
-  sheet.classList.toggle("open", next);
-  const body = document.querySelector("#dock-sheet-body");
-  if (body) {
-    body.inert = !next;
-    body.setAttribute("aria-hidden", String(!next));
-  }
-  if (toggle) {
-    toggle.setAttribute("aria-expanded", String(next));
-    toggle.setAttribute("aria-label", t(next ? "dockClose" : "dockOpen"));
-  }
-  renderDockPeek();
-}
-
-function renderDockPeek() {
-  const peek = document.querySelector("#dock-peek");
-  if (!peek) return;
-  const { count, total } = cartDigest();
-  peek.textContent = lastQuick.length
-    ? t("dockPeek", lastQuick.length)
-    : sessionBudget
-      ? t("dockPeekBudget", HackuMoney.text(sessionBudget, "HKD"))
-      : count
-        ? t("dockPeekCart", { n: count, total })
-        : "";
-}
-
-function setupDock() {
-  const handle = document.querySelector("#dock-toggle");
-  if (!handle || handle._wired) return;
-  handle._wired = true;
-  let startY = 0;
-  let dragged = false;
-  handle.addEventListener("pointerdown", (event) => {
-    if (event.button) return;
-    startY = event.clientY;
-    dragged = false;
-    const move = (next) => {
-      if (Math.abs(next.clientY - startY) > 8) dragged = true;
-    };
-    const up = (next) => {
-      window.removeEventListener("pointermove", move);
-      window.removeEventListener("pointerup", up);
-      const dy = next.clientY - startY;
-      if (dragged) openDock(dy < 0);
-      else openDock();
-    };
-    window.addEventListener("pointermove", move);
-    window.addEventListener("pointerup", up);
-  });
-}
-
-function cartDigest() {
-  const items = HackuCart.load();
-  const count = items.reduce((n, item) => n + (Number(item.qty) || 1), 0);
-  const listed = items
-    .map((item, index) => {
-      const qty = Number(item.qty) || 1;
-      const unit = item.price == null ? t("priceAtStore") : HackuMoney.text(item.price, item.currency);
-      return `c${index + 1}「${item.name}」${unit}${qty > 1 ? ` ×${qty}` : ""}${item.store ? ` · ${item.store}` : ""}`;
-    })
-    .join(t("sep"));
-  const codes = new Set(items.map((item) => item.currency || "HKD"));
-  const priced = items.length && items.every((item) => item.price != null && !Number.isNaN(Number(item.price)));
-  const total =
-    priced && codes.size === 1
-      ? HackuMoney.text(
-          items.reduce((sum, item) => sum + Number(item.price) * (Number(item.qty) || 1), 0),
-          [...codes][0]
-        )
-      : "";
-  return { items, count, listed, total };
-}
-
-function dockRow(label, meta, onClick, enabled = true) {
-  return h(
-    "button",
-    { type: "button", class: "dock-row", disabled: !enabled, onclick: enabled ? onClick : undefined },
-    h("span", { class: "dock-row-label" }, label),
-    h("span", { class: "dock-row-meta" }, meta || "")
-  );
-}
-
-function flashDock(key) {
-  dockFlash = key;
-  renderDock();
-  setTimeout(() => {
-    if (dockFlash === key) {
-      dockFlash = "";
-      renderDock();
-    }
-  }, 1400);
-}
-
-function reviewCart() {
-  const { items, listed, total } = cartDigest();
-  if (!items.length) return;
-  openDock(false);
-  send(t("dockReviewAsk", { listed, total: total || t("priceAtStore") }));
-}
-
-function mentionAllCart() {
-  const items = HackuCart.load();
-  if (!items.length) return;
-  const allOn = items.every((item) => mentions.has(item.id));
-  if (allOn) {
-    clearMentions();
-    paintMentionRows();
-    renderDock();
-    return;
-  }
-  mentions.clear();
-  for (const item of items) mentions.set(item.id, item);
-  renderMentions();
-  paintMentionRows();
-  openDock(false);
-  els.input.focus();
-  syncComposer();
-}
-
-async function writeClipboard(text) {
-  try {
-    await navigator.clipboard.writeText(text);
-    return true;
-  } catch {
-    const box = document.createElement("textarea");
-    box.value = text;
-    box.setAttribute("readonly", "");
-    box.style.cssText = "position:fixed;left:-9999px;top:0";
-    document.body.append(box);
-    box.select();
-    const ok = document.execCommand("copy");
-    box.remove();
-    return ok;
-  }
-}
-
-async function copyCartList() {
-  const { items, count, total } = cartDigest();
-  if (!items.length) return;
-  const lines = items.map((item) => {
-    const qty = Number(item.qty) || 1;
-    const price = item.price == null ? t("priceAtStore") : HackuMoney.text(Number(item.price) * qty, item.currency);
-    return `${item.name}  ×${qty}  ${price}${item.store ? `  ${item.store}` : ""}${item.url ? `\n${item.url}` : ""}`;
-  });
-  const foot = total ? t("dockListFoot", { n: count, total }) : t("itemCount", count);
-  flashDock((await writeClipboard([t("dockListTitle"), ...lines, "", foot].join("\n"))) ? "copy" : "copyFail");
-}
-
-function compareCart() {
-  const items = HackuCart.load().slice(0, MAX_COMPARE);
-  if (items.length < 2) return;
-  comparing.clear();
-  for (const item of items) comparing.set(item.id, item);
-  syncCompare();
-  openDock(false);
-  openCompare();
-}
-
-function setSessionBudget(amount) {
-  sessionBudget = BUDGETS.includes(amount) ? amount : 0;
-  try {
-    sessionStorage.setItem(BUDGET_KEY, String(sessionBudget));
-  } catch {
-    /* The cap lasts for this tab only. */
-  }
-  applyBudgetFilter();
-  renderDock();
-}
-
-function attachBudget(message) {
-  if (!sessionBudget) return message;
-  if (/(單件控制在|Keep each item under|幫我買第|Buy #\d|下單)/i.test(message)) return message;
-  if (/HK\$|NT\$|US\$|以內|under\s*(HK)?\$|預算|budget/i.test(message)) return message;
-  return t("budgetWrap", { text: message, cap: HackuMoney.text(sessionBudget, "HKD") });
-}
-
-function applyBudgetFilter() {
-  const cap = sessionBudget;
-  document.querySelectorAll(".card-wrap[data-price]").forEach((wrap) => {
-    const price = Number(wrap.dataset.price);
-    wrap.classList.toggle("over-budget", cap > 0 && Number.isFinite(price) && price > cap);
-  });
-}
-
-function renderDock() {
-  const tools = document.querySelector("#dock-tools");
-  const budget = document.querySelector("#dock-budget");
-  const quick = document.querySelector("#dock-quick");
-  if (!tools || !budget || !quick) return;
-  const { items, count, total } = cartDigest();
-  const allOn = items.length > 0 && items.every((item) => mentions.has(item.id));
-  const copyMeta = dockFlash === "copy" ? t("copied") : dockFlash === "copyFail" ? t("copyFailed") : total || t("itemCount", count);
-  tools.replaceChildren(
-    dockRow(t("dockReview"), count ? total || t("itemCount", count) : t("cartEmpty"), reviewCart, items.length > 0),
-    dockRow(allOn ? t("dockMentionClear") : t("dockMentionAll"), count ? t("itemCount", count) : "", mentionAllCart, items.length > 0),
-    dockRow(t("dockCopyList"), items.length ? copyMeta : "", copyCartList, items.length > 0),
-    dockRow(t("dockCompareCart"), items.length >= 2 ? t("comparePicked", Math.min(items.length, MAX_COMPARE)) : t("compareNeedTwo"), compareCart, items.length >= 2)
-  );
-  budget.replaceChildren(
-    h("span", { class: "dock-budget-label" }, t("dockBudget")),
-    h(
-      "div",
-      { class: "lang-switch", role: "group", "aria-label": t("dockBudget") },
-      BUDGETS.map((amount) =>
-        h(
-          "button",
-          {
-            type: "button",
-            "aria-pressed": String(sessionBudget === amount),
-            onclick: () => setSessionBudget(amount),
-          },
-          amount ? t("dockBudgetCap", amount) : t("dockBudgetAny")
-        )
-      )
-    )
-  );
-  if (!lastQuick.length) quick.replaceChildren();
-  else {
-    quick.replaceChildren(
-      h("p", { class: "dock-next-title" }, t("dockNext")),
-      h("div", { class: "quick-row" }, lastQuick.map((item) => actionChip(null, item.label, item.prompt)))
-    );
-  }
-  renderDockPeek();
+function renderQuick() {
+  const box = document.querySelector("#quick");
+  if (!box) return;
+  if (!lastQuick.length) box.replaceChildren();
+  else box.replaceChildren(h("div", { class: "quick-row" }, lastQuick.map((item) => actionChip(null, item.label, item.prompt))));
 }
 
 function setupVoice() {
@@ -710,7 +472,6 @@ function paintMentionRows() {
       btn.setAttribute("aria-pressed", String(on));
     }
   });
-  renderDock();
 }
 
 function cardSource(product) {
@@ -788,7 +549,6 @@ function setLanguage(lang) {
   renderMandate(lastMandate);
   document.querySelector("#compare-bar")?.remove();
   if (comparing.size) syncCompare();
-  renderDock();
 }
 
 /* ---------- Sending ---------- */
@@ -803,7 +563,6 @@ function send(text, opts = {}) {
     renderMentions();
     paintMentionRows();
   }
-  message = attachBudget(message);
   const reply = takePendingAsk({ user_reply: message });
   runTurn(message, [reply || { role: "user", content: message }]);
 }
@@ -990,7 +749,6 @@ function updateCartCount() {
     else cardPainters.delete(painter);
   }
   renderSideCart();
-  renderDock();
 }
 
 function renderSideCart() {
@@ -1248,7 +1006,6 @@ function resetChat() {
   sessionStorage.setItem(CURRENT_KEY, crypto.randomUUID());
   sessionStorage.removeItem(CHAT_KEY);
   setQuick([]);
-  openDock(false);
   clearMentions();
   els.list.replaceChildren(welcomeItem());
   renderChatList();
@@ -1458,7 +1215,6 @@ function restoreChat() {
     els.input.placeholder = t("askPlaceholder");
   }
   setQuick(saved.next);
-  applyBudgetFilter();
 }
 
 function readChat() {
@@ -1533,7 +1289,6 @@ function appendSavedAgent(entry) {
   if (products.length) cards.style.setProperty("--n", String(Math.min(products.length, 5)));
   numberCards(cards);
   tagCards(cards, products);
-  applyBudgetFilter();
   markPick(item, entry.text);
   els.list.append(item);
 }
@@ -1613,7 +1368,6 @@ function createTurn() {
       cards.style.setProperty("--n", String(Math.min(items.length, 5) || 5));
       numberCards(cards);
       tagCards(cards, items);
-      applyBudgetFilter();
       cards.querySelectorAll("img").forEach((img) => {
         if (!img.complete) img.addEventListener("load", () => scrollToEnd(), { once: true });
       });
@@ -1672,6 +1426,15 @@ function createTurn() {
       const retry = h("button", { type: "button", class: "act-btn act-retry", title: t("regenerate") }, retryIcon(), t("regenerate"));
       retry.addEventListener("click", onRetry);
       if (said) item.append(h("div", { class: "turn-actions" }, copy, retry));
+      if (!state.pendingAsk && lastQuick.length) {
+        item.append(
+          h(
+            "div",
+            { class: "quick turn-quick" },
+            h("div", { class: "quick-row" }, lastQuick.map((entry) => actionChip(null, entry.label, entry.prompt)))
+          )
+        );
+      }
       scrollToEnd(true);
     },
     stop() {
@@ -2430,5 +2193,4 @@ restoreChat();
 saveChat();
 renderChatList();
 finishStripeReturn();
-setupDock();
-renderDock();
+renderQuick();

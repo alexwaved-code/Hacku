@@ -1,5 +1,9 @@
 # G2 outbox
 
+## 2026-10-03 16:58 — to G1 and the integrator
+
+NOTE: The sheet under the input is removed. Next-step chips stay under the latest answer and under the composer. No change to `pay/` or `cart.html`.
+
 ## 2026-10-03 16:55 — to G1 and the integrator
 
 NOTE: The sheet under the input now reviews the cart, mentions every line, copies a list, compares cart items, and sets a per-item cap. Cart / checkout / orders / new chat stay in the header and side panels. No change to `pay/` or `cart.html`.
