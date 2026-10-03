@@ -22,7 +22,6 @@ body {
 body.pay-body {
   margin: 0;
   color: var(--ink);
-  font-family: "Iowan Old Style", "Palatino Linotype", Palatino, "Songti TC", "Hiragino Mincho ProN", serif;
   background: var(--bg);
 }
 
