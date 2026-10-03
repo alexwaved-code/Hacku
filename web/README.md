@@ -61,7 +61,7 @@ python3 web/server.py
 | `HACKU_DATA_DIR` | Optional data folder. Default `web/data/`. |
 | `HACKU_HOST` | Bind address. Default `127.0.0.1`. |
 | `HACKU_PORT` | Bind port. Default `8765`. |
-| `HACKU_ORIGIN` | Public site URL used for Stripe return links. Default `http://127.0.0.1:8765`. Set this to the tunnel URL when the page is on the internet. |
+| `HACKU_ORIGIN` | Public site URL used for Stripe return links. Default `http://127.0.0.1:8765`. On the host it is `https://hacku-production.up.railway.app`. |
 
 Without `OPENAI_API_KEY`, `/api/chat` returns an error. Without `SERPER_API_KEY`, the search tools fail and the assistant says so. Without a Stripe key, checkout returns 503.
 
@@ -175,26 +175,15 @@ The window always stops at the store's payment page. Whoever places the order pa
 
 ## Public site
 
-This Mac has to stay on. There is no login: anyone with the URL can chat and use the model and Stripe keys.
+The shop is at https://hacku-production.up.railway.app
+
+There is no login: anyone with the URL can chat and use the model and Stripe keys. Store checkout on `/orders.html` still uses Chrome on a local Mac.
+
+To publish a new build from `web/`:
 
 ```bash
-brew install cloudflared
-python3 web/server.py
+railway up
 ```
-
-In another terminal:
-
-```bash
-cloudflared tunnel --url http://127.0.0.1:8765
-```
-
-Copy the `https://….trycloudflare.com` URL, then restart the server so Stripe returns there:
-
-```bash
-HACKU_ORIGIN=https://….trycloudflare.com python3 web/server.py
-```
-
-The quick-tunnel URL changes every run. A named tunnel with a fixed hostname needs a Cloudflare zone and `cloudflared tunnel login`. Store checkout on `/orders.html` still uses Chrome on this Mac.
 
 ## Going live
 

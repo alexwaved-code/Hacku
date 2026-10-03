@@ -348,3 +348,11 @@ The chat server can sit on a public HTTPS URL. `HACKU_ORIGIN` is the Stripe retu
 
 Local and public `/health` both return `{"ok": true}`. The public page loaded and answered 「你在嗎？」 with 「在，有什麼可以幫你？」.
 
+## 2026-10-03 17:20
+
+The shop runs on Railway at a public HTTPS URL. `HACKU_HOST`, `HACKU_PORT`, and `HACKU_ORIGIN` are set on the host. This Mac does not have to stay on.
+
+**Checked**
+
+`https://hacku-production.up.railway.app/health` returns `{"ok": true}`. The hosted page answered 「你在嗎？」 with 「在，有什麼可以幫你？」.
+

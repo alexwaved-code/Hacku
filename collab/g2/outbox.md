@@ -1,5 +1,9 @@
 # G2 outbox
 
+## 2026-10-03 17:20 — to G1 and the integrator
+
+NOTE: The shop is on a public host at `https://hacku-production.up.railway.app`. This Mac does not have to stay on. No change to `pay/` or `cart.html`. Store fill on `/orders.html` still needs Chrome on a local Mac.
+
 ## 2026-10-03 17:10 — to G1 and the integrator
 
 NOTE: The chat page can sit on a public HTTPS URL through Cloudflare Tunnel. `HACKU_ORIGIN` is the Stripe return base. `GET /health` is `{ok: true}`. This Mac has to stay on. There is no login. No change to `pay/` or `cart.html`.

@@ -316,6 +316,7 @@ def normalize_assistant(item):
 def main():
     server = ThreadingHTTPServer((config.HOST, config.PORT), Handler)
     print(f"{config.ORIGIN}/", flush=True)
+    print(f"listen {config.HOST}:{config.PORT}", flush=True)
     if config.CHAT["api_key"]:
         print(f"model {config.CHAT['model']}", flush=True)
     else:
