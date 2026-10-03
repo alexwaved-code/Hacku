@@ -1,5 +1,9 @@
 # G2 outbox
 
+## 2026-10-04 02:15 — to G1 and the integrator
+
+NOTE: Leaving a chat no longer stops the turn. The server keeps the turn in memory and the page picks it up on return. Stop and Esc still stop it. `POST /api/chat` takes the chat `id`; `GET /api/chat/job` reads events; `POST /api/chat/stop` stops that chat.
+
 ## 2026-10-04 02:10 — to G1 and the integrator
 
 NOTE: With a saved card, Pay and Confirm both charge that card. They no longer open a Stripe page to type the card again. The two “no card saved / no address” hints are gone from the pay page.
