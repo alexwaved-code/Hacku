@@ -4,6 +4,7 @@
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 import json
+import re
 import socket
 import sys
 import threading
@@ -17,6 +18,9 @@ from shop import browser
 
 MAX_BODY = 600_000
 MAX_MESSAGES = 80
+CHAT_ID = re.compile(r"^[A-Za-z0-9-]{8,80}$")
+JOBS = {}
+JOBS_LOCK = threading.Lock()
 PAY_ROUTES = (
     "/api/checkout",
     "/api/pay",
@@ -35,6 +39,56 @@ GET_ROUTES = {
     "/api/wallet": wallet.view,
     "/api/log": checkout.log,
 }
+
+
+class Job:
+    def __init__(self):
+        self.events = []
+        self.status = "running"
+        self.stop = threading.Event()
+        self.lock = threading.Lock()
+
+
+def begin_job(chat_id):
+    """Start a turn for this chat. A turn already running for it is asked to stop."""
+    if not CHAT_ID.match(chat_id or ""):
+        chat_id = ""
+    job = Job()
+    with JOBS_LOCK:
+        old = JOBS.get(chat_id)
+        if old and old.status == "running":
+            old.stop.set()
+        if chat_id:
+            JOBS[chat_id] = job
+            while len(JOBS) > 40:
+                JOBS.pop(next(iter(JOBS)))
+    return job
+
+
+def stop_job(chat_id):
+    if not CHAT_ID.match(chat_id or ""):
+        return False
+    with JOBS_LOCK:
+        job = JOBS.get(chat_id)
+    if job:
+        job.stop.set()
+    return bool(job)
+
+
+def job_view(chat_id, start):
+    """Events since `start`, and whether the turn is still running. Missing when the server has no turn."""
+    if not CHAT_ID.match(chat_id or ""):
+        return {"status": "missing", "events": []}
+    try:
+        index = max(0, int(start))
+    except (TypeError, ValueError):
+        index = 0
+    with JOBS_LOCK:
+        job = JOBS.get(chat_id)
+    if not job:
+        return {"status": "missing", "events": []}
+    with job.lock:
+        return {"status": job.status, "events": job.events[index:]}
 
 
 class Handler(SimpleHTTPRequestHandler):
@@ -82,6 +136,11 @@ class Handler(SimpleHTTPRequestHandler):
             session = (parse_qs(url.query).get("session") or [""])[0]
             self.pay_reply(lambda: wallet.confirm(session))
             return
+        if url.path == "/api/chat/job":
+            chat_id = (parse_qs(url.query).get("id") or [""])[0]
+            start = (parse_qs(url.query).get("from") or ["0"])[0]
+            self.send_json(200, job_view(chat_id, start))
+            return
         if url.path in GET_ROUTES:
             self.pay_reply(GET_ROUTES[url.path])
             return
@@ -113,6 +172,15 @@ class Handler(SimpleHTTPRequestHandler):
         if path in PAY_ROUTES:
             self.pay_reply(lambda: self.pay_action(path, self.read_json()))
             return
+        if path == "/api/chat/stop":
+            try:
+                payload = self.read_json()
+            except checkout.CheckoutError as error:
+                self.send_json(error.status, {"error": str(error)})
+                return
+            stop_job(str(payload.get("id") or ""))
+            self.send_json(200, {"ok": True})
+            return
         if path != "/api/chat":
             self.send_error(404)
             return
@@ -139,23 +207,38 @@ class Handler(SimpleHTTPRequestHandler):
         self.send_header("Connection", "close")
         self.end_headers()
         self.close_connection = True
+        job = begin_job(str(payload.get("id") or ""))
+        gone = False
 
         def emit(event):
+            nonlocal gone
+            if job.stop.is_set():
+                raise harness.Aborted()
+            with job.lock:
+                job.events.append(event)
+            if gone:
+                return
             try:
                 self.wfile.write(f"data: {json.dumps(event, ensure_ascii=False)}\n\n".encode("utf-8"))
                 self.wfile.flush()
-            except (BrokenPipeError, ConnectionResetError, OSError) as error:
-                raise harness.Aborted() from error
+            except (BrokenPipeError, ConnectionResetError, OSError):
+                gone = True
 
+        status = "done"
         try:
             harness.run(config.CHAT, messages, emit, lang="en" if payload.get("lang") == "en" else "zh", cart=payload.get("cart"))
         except harness.Aborted:
-            return
+            status = "stopped"
         except llm.UpstreamError as error:
+            status = "error"
             self.safe_emit(emit, {"type": "error", "message": str(error)})
         except Exception:
             traceback.print_exc(file=sys.stderr)
+            status = "error"
             self.safe_emit(emit, {"type": "error", "message": "助理發生內部錯誤。"})
+        with job.lock:
+            if job.status == "running":
+                job.status = status
 
     def read_json(self):
         length = int(self.headers.get("Content-Length", "0") or "0")

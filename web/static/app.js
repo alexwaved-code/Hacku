@@ -58,7 +58,7 @@ els.form.addEventListener("submit", (event) => {
   els.form.classList.remove("has-text");
   send(text, { withMentions: true });
 });
-els.stop.addEventListener("click", () => state.controller?.abort());
+els.stop.addEventListener("click", () => stopTurn());
 els.input.addEventListener("input", syncComposer);
 els.newChat.forEach((button) => button.addEventListener("click", resetChat));
 els.list.addEventListener(
@@ -79,7 +79,7 @@ document.addEventListener("keydown", (event) => {
     return;
   }
   if (event.key === "Escape" && state.busy) {
-    state.controller?.abort();
+    stopTurn();
     return;
   }
   if (event.key.toLowerCase() === "k" && (event.metaKey || event.ctrlKey) && els.chatSearch) {
@@ -612,6 +612,24 @@ function takePendingAsk(payload) {
   return { role: "tool", tool_call_id: ask.id, content: JSON.stringify(payload) };
 }
 
+function stopTurn() {
+  fetch("/api/chat/stop", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ id: currentChatId() }),
+    keepalive: true,
+  }).catch(() => {});
+  state.pending = false;
+  state.controller?.abort("stop");
+}
+
+function detachTurn() {
+  state.epoch = null;
+  state.controller?.abort();
+  state.controller = null;
+  setBusy(false);
+}
+
 async function runTurn(display, entries) {
   els.list.querySelectorAll(".follow-ups, .turn-quick, .act-retry").forEach((node) => node.remove());
   const userItem = appendUser(display);
@@ -620,7 +638,11 @@ async function runTurn(display, entries) {
   const turn = createTurn();
   const base = state.thread.length;
   state.thread.push(...entries);
+  const epoch = {};
+  state.epoch = epoch;
+  state.pending = true;
   setBusy(true);
+  saveChat();
 
   const controller = new AbortController();
   state.controller = controller;
@@ -632,8 +654,10 @@ async function runTurn(display, entries) {
 
   try {
     const added = await streamChat(controller, turn);
+    if (state.epoch !== epoch) return;
     await turn.finish();
     state.thread.push(...added);
+    state.pending = false;
     turn.addActions(() => {
       if (state.busy) return;
       state.thread.length = base;
@@ -644,18 +668,25 @@ async function runTurn(display, entries) {
     syncOrders();
     saveChat();
   } catch (error) {
+    if (state.epoch !== epoch) return;
     state.afterTurn = null;
+    if (controller.signal.aborted && controller.signal.reason !== "stop" && !turn.timedOut) return;
+    state.pending = false;
     if (turn.timedOut) {
       state.thread.length = base;
       turn.fail(t("timeout"), retry);
-    } else if (controller.signal.aborted) {
+    } else if (controller.signal.aborted && controller.signal.reason === "stop") {
       const partial = turn.stop();
       if (partial) state.thread.push({ role: "assistant", content: partial });
+    } else if (controller.signal.aborted) {
+      return;
     } else {
       state.thread.length = base;
       turn.fail(error instanceof Error ? error.message : t("genericError"), retry);
     }
+    saveChat();
   } finally {
+    if (state.epoch !== epoch) return;
     state.controller = null;
     setBusy(false);
     if (!state.pendingAsk) els.input.focus();
@@ -696,7 +727,7 @@ async function streamChat(controller, turn) {
     clearTimeout(idle);
     idle = setTimeout(() => {
       turn.timedOut = true;
-      controller.abort();
+      stopTurn();
     }, IDLE_TIMEOUT_MS);
   };
   bump();
@@ -707,7 +738,7 @@ async function streamChat(controller, turn) {
       response = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
-        body: JSON.stringify({ messages: state.thread, lang: HackuText.get(), cart: cartForAgent() }),
+        body: JSON.stringify({ id: currentChatId(), messages: state.thread, lang: HackuText.get(), cart: cartForAgent() }),
         signal: controller.signal,
       });
     } catch (error) {
@@ -741,16 +772,7 @@ async function streamChat(controller, turn) {
       for (const block of blocks) {
         const event = parseEvent(block);
         if (!event) continue;
-        if (event.type === "delta") turn.write(event.text);
-        else if (event.type === "retract") turn.retract();
-        else if (event.type === "tool_start") turn.stepStart(event);
-        else if (event.type === "tool_result") turn.stepDone(event);
-        else if (event.type === "cards") turn.showCards(event.items, true);
-        else if (event.type === "phase") turn.phase(event.phase);
-        else if (event.type === "ask") turn.ask(event);
-        else if (event.type === "next") setQuick(event.actions);
-        else if (event.type === "error") throw new Error(event.message || t("agentError"));
-        else if (event.type === "done") added = Array.isArray(event.messages) ? event.messages : [];
+        added = applyStreamEvent(turn, event) ?? added;
       }
     }
 
@@ -758,6 +780,65 @@ async function streamChat(controller, turn) {
     return added;
   } finally {
     clearTimeout(idle);
+  }
+}
+
+function applyStreamEvent(turn, event) {
+  if (event.type === "delta") turn.write(event.text);
+  else if (event.type === "retract") turn.retract();
+  else if (event.type === "tool_start") turn.stepStart(event);
+  else if (event.type === "tool_result") turn.stepDone(event);
+  else if (event.type === "cards") turn.showCards(event.items, true);
+  else if (event.type === "phase") turn.phase(event.phase);
+  else if (event.type === "ask") turn.ask(event);
+  else if (event.type === "next") setQuick(event.actions);
+  else if (event.type === "error") throw new Error(event.message || t("agentError"));
+  else if (event.type === "done") return Array.isArray(event.messages) ? event.messages : [];
+  return null;
+}
+
+async function resumeTurn(id) {
+  const epoch = {};
+  state.epoch = epoch;
+  state.pending = true;
+  setBusy(true);
+  const turn = createTurn();
+  let seen = 0;
+  let added = null;
+  try {
+    while (state.epoch === epoch) {
+      const response = await fetch(`/api/chat/job?id=${encodeURIComponent(id)}&from=${seen}`);
+      const job = await response.json();
+      if (state.epoch !== epoch) return;
+      if (!response.ok || job.status === "missing") break;
+      for (const event of job.events || []) added = applyStreamEvent(turn, event) ?? added;
+      seen += (job.events || []).length;
+      if (job.status !== "running") break;
+      await new Promise((resolve) => setTimeout(resolve, 700));
+    }
+    if (state.epoch !== epoch) return;
+    if (!added) {
+      turn.remove();
+      state.pending = false;
+      saveChat();
+      return;
+    }
+    await turn.finish();
+    state.thread.push(...added);
+    state.pending = false;
+    turn.addActions(() => {});
+    stripRegenerate(els.list.lastElementChild);
+    syncOrders();
+    saveChat();
+  } catch (error) {
+    if (state.epoch !== epoch) return;
+    state.pending = false;
+    turn.fail(error instanceof Error ? error.message : t("genericError"), () => {});
+    saveChat();
+  } finally {
+    if (state.epoch !== epoch) return;
+    state.controller = null;
+    setBusy(false);
   }
 }
 
@@ -1038,7 +1119,7 @@ function welcomeItem() {
 
 function resetChat() {
   saveChat();
-  state.controller?.abort();
+  detachTurn();
   state.thread = [];
   state.pendingAsk = null;
   state.openAsk = null;
@@ -1168,7 +1249,7 @@ function confirmDelete(id, bar) {
 function deleteChat(id) {
   localStorage.setItem(CHATS_KEY, JSON.stringify(loadChats().filter((chat) => chat.id !== id)));
   if (id === currentChatId()) {
-    state.controller?.abort();
+    detachTurn();
     state.thread = [];
     sessionStorage.removeItem(CHAT_KEY);
     sessionStorage.setItem(CURRENT_KEY, crypto.randomUUID());
@@ -1220,7 +1301,7 @@ function openChat(id) {
   saveChat();
   const chat = loadChats().find((item) => item.id === id);
   if (!chat) return;
-  state.controller?.abort();
+  detachTurn();
   sessionStorage.setItem(CURRENT_KEY, id);
   sessionStorage.setItem(
     CHAT_KEY,
@@ -1243,14 +1324,22 @@ function restoreChat() {
     return;
   }
   state.thread = Array.isArray(saved.thread) ? saved.thread : [];
+  state.pending = Boolean(saved.pending);
   els.list.replaceChildren();
-  for (const entry of saved.view || []) {
+  const view = saved.view || [];
+  const rows = saved.pending ? view.filter((entry, index) => !(index === view.length - 1 && entry.kind === "agent")) : view;
+  for (const entry of rows) {
     if (entry.kind === "user") appendUser(entry.text);
     else if (entry.kind === "agent") appendSavedAgent(entry);
     else if (entry.text && entry.text !== GREETING) els.list.append(h("li", { class: "message agent" }, entry.text));
   }
   for (const item of els.list.children) item.classList.add("restored");
   if (!els.list.children.length) els.list.append(welcomeItem());
+  if (saved.pending) {
+    paintChatTitle();
+    resumeTurn(currentChatId());
+    return;
+  }
   if (saved.openAsk) {
     const card = askCard(saved.openAsk.questions || []);
     els.list.lastElementChild?.append(card.el);
@@ -1305,6 +1394,7 @@ function saveChat() {
     view,
     openAsk: state.openAsk || null,
     next: lastQuick,
+    pending: Boolean(state.pending),
   };
   try {
     sessionStorage.setItem(CHAT_KEY, JSON.stringify(payload));
