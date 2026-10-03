@@ -190,14 +190,14 @@ function formMarkup() {
 const pageForm = document.querySelector("#settings");
 if (pageForm) {
   HackuText.apply();
-  document.title = t("settingsTitle");
+  document.title = `${t("settingsTitle")} · ${t("title")}`;
   paintFields(document);
   fill(pageForm, HackuProfile.load());
   bindForm(pageForm);
   document.querySelectorAll("[data-lang]").forEach((button) => {
     button.addEventListener("click", () => {
       HackuText.set(button.dataset.lang);
-      document.title = t("settingsTitle");
+      document.title = `${t("settingsTitle")} · ${t("title")}`;
       paintFields(document);
     });
   });

@@ -62,14 +62,16 @@ web/server.py ── agent/   tool loop: search, read pages, cards, cart, ask, b
 - **Hosting:** Railway
 - **Code:** Python standard-library HTTP server, SQLite, plain HTML, CSS, and JavaScript. No framework, no build step.
 
-## Run it
+## Try it
+
+Open https://hacku-production.up.railway.app, sign a spending limit on the Pay page, and ask for something. Payments run in Stripe test mode: use card `4242 4242 4242 4242`, any future date, any CVC.
+
+## Run your own copy
 
 ```bash
 cp web/.env.example web/.env   # add OPENAI_API_KEY, SERPER_API_KEY, STRIPE_SECRET_KEY (sk_test_...)
 python3 web/server.py
 ```
-
-Open http://127.0.0.1:8765/, sign a spending limit on the cart page, and ask for something. Test card on Stripe: `4242 4242 4242 4242`, any future date, any CVC.
 
 Tests, from `web/`:
 
