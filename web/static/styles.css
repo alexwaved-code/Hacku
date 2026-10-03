@@ -612,7 +612,7 @@ button {
   margin: 0;
   color: var(--ink);
   font-size: 15px;
-  font-weight: 700;
+  font-weight: 560;
 }
 
 .cart-mark {
@@ -638,14 +638,14 @@ button {
 .count-badge {
   display: grid;
   place-items: center;
-  min-width: 22px;
-  height: 22px;
-  padding: 0 7px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
   border-radius: 999px;
-  background: var(--accent);
-  color: var(--ink);
-  font-size: 12px;
-  font-weight: 750;
+  background: var(--ink);
+  color: var(--user-text);
+  font-size: 11px;
+  font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
 
@@ -662,37 +662,19 @@ button {
 .side-mandate {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 11px 12px;
-  border: 1px solid var(--line);
-  border-radius: 14px;
-  background: #fff;
-  color: var(--ink);
+  gap: 8px;
+  margin: 0 12px;
+  padding: 8px 2px;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+  background: transparent;
+  color: var(--muted);
   text-decoration: none;
-  transition: border-color 0.15s, transform 0.2s var(--ease), box-shadow 0.2s var(--ease);
-  animation: fade-in 0.3s ease both;
 }
 
 .side-mandate:hover {
-  border-color: #cfc5b7;
-  box-shadow: var(--shadow);
-  transform: translateY(-1px);
-}
-
-.mandate-icon {
-  display: grid;
-  flex: none;
-  place-items: center;
-  width: 34px;
-  height: 34px;
-  border-radius: 10px;
-  background: #e7f0e8;
-  color: var(--good);
-}
-
-.mandate-icon svg {
-  width: 18px;
-  height: 18px;
+  color: var(--ink);
 }
 
 .mandate-body {
@@ -700,119 +682,73 @@ button {
   flex: 1;
   flex-direction: column;
   min-width: 0;
-  color: var(--muted);
   font-size: 12px;
   line-height: 1.45;
 }
 
 .mandate-body strong {
-  color: var(--good);
-  font-size: 13px;
+  color: inherit;
+  font-size: 12.5px;
+  font-weight: 560;
 }
 
-.mandate-days {
+.side-mandate.ok strong {
   color: var(--ink);
-  font-weight: 600;
-}
-
-.mandate-go {
-  color: var(--muted);
-  transition: transform 0.2s var(--ease), color 0.15s;
-}
-
-.mandate-go svg {
-  width: 16px;
-  height: 16px;
-}
-
-.side-mandate:hover .mandate-go {
-  color: var(--ink);
-  transform: translateX(2px);
-}
-
-.side-mandate.missing {
-  border-color: #f0c36d;
-  background: #fff8e8;
-}
-
-.side-mandate.missing .mandate-icon {
-  background: #fdebc4;
-  color: #8a5a00;
 }
 
 .side-mandate.missing strong {
-  color: #8a5a00;
+  color: var(--ink);
 }
 
 .cart-empty {
   display: flex;
   flex-direction: column;
-  align-items: center;
+  align-items: flex-start;
   gap: 6px;
-  padding: 40px 16px;
+  padding: 20px 12px;
   color: var(--muted);
   font-size: 12.5px;
   line-height: 1.5;
-  text-align: center;
-  animation: fade-in 0.4s ease both;
 }
 
 .cart-empty strong {
   color: var(--ink);
   font-size: 14px;
+  font-weight: 560;
 }
 
 .cart-empty p {
   margin: 0;
-  max-width: 220px;
-}
-
-.cart-empty-icon {
-  display: grid;
-  place-items: center;
-  width: 60px;
-  height: 60px;
-  margin-bottom: 6px;
-  border: 1.5px dashed #d3c9bb;
-  border-radius: 999px;
-  color: #b3a898;
-  animation: float 3.2s ease-in-out infinite;
-}
-
-.cart-empty-icon svg {
-  width: 26px;
-  height: 26px;
+  max-width: 240px;
 }
 
 .side-cart-list {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 0;
   margin: 0;
-  padding: 0;
+  padding: 0 8px 0 0;
   list-style: none;
 }
 
 .side-cart-item {
   display: grid;
-  grid-template-columns: 56px minmax(0, 1fr);
+  grid-template-columns: 48px minmax(0, 1fr);
   gap: 10px;
   align-items: start;
-  padding: 10px;
-  border: 1px solid var(--line);
-  border-radius: 14px;
-  background: #fff;
-  transition: border-color 0.15s, box-shadow 0.2s var(--ease);
+  padding: 10px 4px 12px;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+  background: transparent;
 }
 
 .side-cart-item:hover {
-  border-color: #d6ccbe;
-  box-shadow: var(--shadow);
+  background: transparent;
 }
 
 .side-cart-item.mentioned {
-  border-color: var(--ink);
-  box-shadow: 0 0 0 2px rgba(28, 25, 21, 0.08);
+  background: transparent;
 }
 
 .side-cart-item.fresh {
@@ -824,11 +760,11 @@ button {
 }
 
 .side-cart-pic {
-  width: 56px;
-  height: 56px;
-  padding: 4px;
-  border: 1px solid #f0ebe3;
-  border-radius: 10px;
+  width: 48px;
+  height: 48px;
+  padding: 3px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
   background: #fff;
   object-fit: contain;
 }
@@ -853,37 +789,32 @@ button {
 }
 
 .mention-btn {
-  display: inline-flex;
+  display: grid;
   flex: none;
-  align-items: center;
-  gap: 4px;
-  height: 26px;
-  padding: 0 8px;
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  background: #faf8f4;
-  color: var(--ink);
-  font: inherit;
-  font-size: 11.5px;
-  font-weight: 650;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
   cursor: pointer;
-  transition: background 0.15s, border-color 0.15s, color 0.15s, transform 0.15s var(--ease);
 }
 
 .mention-btn svg {
-  width: 13px;
-  height: 13px;
+  width: 14px;
+  height: 14px;
 }
 
 .mention-btn:hover {
-  border-color: var(--ink);
-  transform: translateY(-1px);
+  color: var(--ink);
+  background: #f3efe6;
 }
 
 .mention-btn.on {
-  border-color: var(--ink);
-  background: var(--ink);
-  color: var(--user-text);
+  color: var(--ink);
+  background: #efeae1;
 }
 
 .side-cart-name {
@@ -915,8 +846,23 @@ a.side-cart-name:hover {
 .side-cart-foot {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  flex-wrap: wrap;
   gap: 8px;
+}
+
+.cart-remove {
+  margin-left: auto;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.cart-remove:hover {
+  color: var(--bad, #9a3b2f);
 }
 
 .side-cart-price {
@@ -951,9 +897,13 @@ a.side-cart-name:hover {
   transition: background 0.15s, color 0.15s, transform 0.15s var(--ease);
 }
 
-.qty-btn:hover {
+.qty-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.qty-btn:hover:not(:disabled) {
   background: #fff;
-  box-shadow: 0 1px 3px rgba(28, 25, 21, 0.12);
 }
 
 .qty-btn:active {
@@ -981,21 +931,19 @@ a.side-cart-name:hover {
   text-align: center;
 }
 
-.cart-panel .side-pay,
-.cart-panel .side-mandate {
-  margin-right: 12px;
+.cart-panel .side-pay {
+  margin: auto 12px 8px;
 }
 
 .side-pay {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  padding: 14px;
-  border: 1px solid var(--line);
-  border-radius: 16px;
-  background: #fff;
-  box-shadow: var(--shadow);
-  animation: rise-in 0.35s var(--ease) both;
+  padding: 12px 0 4px;
+  border: 0;
+  border-top: 1px solid var(--line);
+  border-radius: 0;
+  background: var(--panel);
 }
 
 .sum-row {
@@ -1012,10 +960,9 @@ a.side-cart-name:hover {
 
 .side-total {
   display: inline-block;
-  font-size: 20px;
-  font-weight: 750;
+  font-size: 16px;
+  font-weight: 560;
   font-variant-numeric: tabular-nums;
-  letter-spacing: -0.01em;
 }
 
 .side-total.tick {
@@ -1023,53 +970,26 @@ a.side-cart-name:hover {
 }
 
 .checkout-btn {
-  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
-  height: 44px;
-  overflow: hidden;
-  border-radius: 12px;
+  height: 42px;
+  border-radius: 11px;
   background: var(--ink);
   color: var(--user-text);
-  font-size: 15px;
-  font-weight: 650;
+  font-size: 14.5px;
+  font-weight: 560;
   text-decoration: none;
-  transition: transform 0.2s var(--ease), box-shadow 0.2s var(--ease);
-}
-
-.checkout-btn::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(110deg, transparent 30%, rgba(255, 255, 255, 0.18) 50%, transparent 70%);
-  background-size: 250% 100%;
-  background-position: 100% 0;
-  pointer-events: none;
 }
 
 .checkout-btn:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 8px 18px rgba(28, 25, 21, 0.2);
-}
-
-.checkout-btn:hover::after {
-  animation: shine 0.9s ease;
-}
-
-.checkout-btn:active {
-  transform: scale(0.98);
+  background: #2a2621;
 }
 
 .checkout-btn svg {
-  width: 18px;
-  height: 18px;
-  transition: transform 0.2s var(--ease);
-}
-
-.checkout-btn:hover svg {
-  transform: translateX(3px);
+  width: 16px;
+  height: 16px;
 }
 
 .pay-note {
@@ -3110,7 +3030,7 @@ a.card:hover .pic img {
   display: block;
   height: 100%;
   border-radius: inherit;
-  background: var(--good);
+  background: #b8b0a4;
   transition: width 0.5s var(--ease), background 0.2s;
 }
 
@@ -3254,6 +3174,7 @@ a.card:hover .pic img {
     flex: none;
     width: auto;
     min-width: 0;
+    max-width: none;
   }
 
   #cart-link.cart-link {

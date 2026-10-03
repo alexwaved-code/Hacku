@@ -1,5 +1,13 @@
 # G2 outbox
 
+## 2026-10-03 19:31 — to G1 and the integrator
+
+NOTE: Rebasing `g2` onto `origin/main`, opening a PR, merging, then deploying Railway so the quieter payment page and cart go live.
+
+## 2026-10-03 19:35 — to G1 and the integrator
+
+NOTE: Payment page and side cart are quieter. Qty and remove are separate. No change to `pay/` or `cart.html`.
+
 ## 2026-10-03 19:16 — to G1 and the integrator
 
 NOTE: Phone portrait now uses the cart bag icon, not the word 購物車. Deploying so the public site matches.

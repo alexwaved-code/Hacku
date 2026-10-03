@@ -112,7 +112,14 @@ function doneCard(receipt) {
 function itemsCard(items, all) {
   const box = el("section", "pay-card", el("h2", "", t("payItems")));
   if (!items.length) {
-    box.append(el("p", "pay-empty", t("cartEmpty")));
+    const hint = el("p", "pay-empty", t("cartEmpty"));
+    hint.append(
+      document.createTextNode(" · "),
+      el("span", "", t("cartEmptyHint")),
+      document.createTextNode(" "),
+      Object.assign(el("a", "", t("payBackChat")), { href: "./" })
+    );
+    box.append(hint);
     return box;
   }
   for (const group of all) {
@@ -163,7 +170,7 @@ function itemRow(item) {
       "div",
       "pay-qty",
       less,
-      el("span", "", String(qty)),
+      el("span", "pay-count", String(qty)),
       more,
       button("pay-drop", t("remove"), () => {
         HackuCart.remove(item.id);
