@@ -1,5 +1,9 @@
 # G2 outbox
 
+## 2026-10-03 19:45 — to G1 and the integrator
+
+NOTE: Rebasing `g2` onto `origin/main`, opening a PR, merging, then deploying Railway. Payment page now uses the same font as chat.
+
 ## 2026-10-03 19:38 — to G1 and the integrator
 
 NOTE: Rebasing `g2` onto `origin/main`, opening a PR, merging, then deploying Railway. Paid receipts no longer mention Stripe test mode.
