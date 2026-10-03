@@ -1,0 +1,83 @@
+.cmp-pair {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.cmp-clock {
+  margin: 6px 0 2px;
+  font-size: 34px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.cmp-field {
+  display: grid;
+  gap: 6px;
+  margin-top: 12px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.cmp-field input {
+  width: 100%;
+  padding: 9px 11px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+  color: var(--ink);
+  font: inherit;
+  font-size: 14px;
+}
+
+.cmp-row {
+  display: grid;
+  grid-template-columns: 1fr 6em;
+  gap: 8px;
+}
+
+.cmp-save {
+  justify-content: center;
+}
+
+.cmp-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.cmp-table th,
+.cmp-table td {
+  padding: 8px 6px;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  vertical-align: top;
+}
+
+.cmp-table th {
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.cmp-sub {
+  display: block;
+  color: var(--muted);
+}
+
+.cmp-sub.mono,
+.pay-hint.mono {
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 11px;
+}
+
+.cmp-win {
+  color: var(--good);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+@media (max-width: 640px) {
+  .cmp-pair {
+    grid-template-columns: 1fr;
+  }
+}

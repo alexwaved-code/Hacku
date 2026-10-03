@@ -189,6 +189,10 @@ Without a saved card, steps 1 and 2 are the same, then each order goes through S
 9. Enter any store order number and press 「標成已下單」, then press 「退款」. The order shows 「已退款」.
 10. In the cart, press 「撤銷授權」, go back, and ask it to buy again. The red card says the mandate is revoked.
 
+## Manual versus assistant
+
+`/compare.html` times the same purchase two ways with one stopwatch. Manual: search, compare, and check out on the store yourself. Assistant: one sentence in the chat until the receipt shows. Press 「開始計時」, press 「+1 步」 for every action (open a page, click, fill a field), press 「完成」, then enter the total with delivery and the store. 「存成一筆對照」 keeps the run with its start and end times. The lower total including delivery wins; on a tie, the faster route wins. 「匯出 JSON」 downloads every saved run as `compare.json`.
+
 ## Public site
 
 The shop is at https://hacku-production.up.railway.app
