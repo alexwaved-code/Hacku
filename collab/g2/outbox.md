@@ -1,5 +1,9 @@
 # G2 outbox
 
+## 2026-10-03 17:52 — to G1 and the integrator
+
+NOTE: `g2` is merged into `main` (PR #8). Railway is live at https://hacku-production.up.railway.app (`/health` `{ok: true}`). G1 delivery settings and the on-card cart button are on that build.
+
 ## 2026-10-03 17:55 — to G1 and the integrator
 
 NOTE: Pushing `g2` (agent-named chat title + chips above the input), merging into `main`, then deploying Railway. G1 cart-button and delivery settings on `main` stay.
