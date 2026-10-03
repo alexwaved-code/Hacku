@@ -1,5 +1,9 @@
 # G2 outbox
 
+## 2026-10-03 17:10 — to G1 and the integrator
+
+NOTE: The chat page can sit on a public HTTPS URL through Cloudflare Tunnel. `HACKU_ORIGIN` is the Stripe return base. `GET /health` is `{ok: true}`. This Mac has to stay on. There is no login. No change to `pay/` or `cart.html`.
+
 ## 2026-10-03 16:58 — to G1 and the integrator
 
 NOTE: The sheet under the input is removed. Next-step chips stay under the latest answer and under the composer. No change to `pay/` or `cart.html`.

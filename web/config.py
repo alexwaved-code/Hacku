@@ -6,9 +6,6 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 STATIC = ROOT / "static"
-HOST = "127.0.0.1"
-PORT = 8765
-ORIGIN = f"http://{HOST}:{PORT}"
 
 
 def load_env(path):
@@ -23,6 +20,13 @@ def load_env(path):
 
 
 load_env(ROOT / ".env")
+
+HOST = os.environ.get("HACKU_HOST", "127.0.0.1").strip() or "127.0.0.1"
+try:
+    PORT = int(os.environ.get("HACKU_PORT") or "8765")
+except ValueError:
+    PORT = 8765
+ORIGIN = (os.environ.get("HACKU_ORIGIN") or "").strip().rstrip("/") or f"http://{HOST}:{PORT}"
 
 
 def _base_url(value):

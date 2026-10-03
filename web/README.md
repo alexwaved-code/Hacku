@@ -59,6 +59,9 @@ python3 web/server.py
 | `VERIFY_BASE_URL`, `VERIFY_API_KEY`, `VERIFY_MODEL` | Optional second model for the verifier. Without all three, the chat model rates listings with the verifier's own prompt. |
 | `HACKU_SECRET` | Optional signing secret. Without it, a random one is kept in `data/secret.key`. Changing it voids saved cart items and mandates. |
 | `HACKU_DATA_DIR` | Optional data folder. Default `web/data/`. |
+| `HACKU_HOST` | Bind address. Default `127.0.0.1`. |
+| `HACKU_PORT` | Bind port. Default `8765`. |
+| `HACKU_ORIGIN` | Public site URL used for Stripe return links. Default `http://127.0.0.1:8765`. Set this to the tunnel URL when the page is on the internet. |
 
 Without `OPENAI_API_KEY`, `/api/chat` returns an error. Without `SERPER_API_KEY`, the search tools fail and the assistant says so. Without a Stripe key, checkout returns 503.
 
@@ -169,6 +172,29 @@ The window always stops at the store's payment page. Whoever places the order pa
 8. Open http://127.0.0.1:8765/orders.html. The order shows the address. Press 「助理代填購物車」. A Chrome window opens the store's checkout with the item and the address filled in, and the status becomes 「購物車已備好」. Do not pay on the store page in a test run.
 9. Enter any store order number and press 「標成已下單」, then press 「退款」. The order shows 「已退款」.
 10. In the cart, press 「撤銷授權」, go back, and ask it to buy again. The red card says the mandate is revoked.
+
+## Public site
+
+This Mac has to stay on. There is no login: anyone with the URL can chat and use the model and Stripe keys.
+
+```bash
+brew install cloudflared
+python3 web/server.py
+```
+
+In another terminal:
+
+```bash
+cloudflared tunnel --url http://127.0.0.1:8765
+```
+
+Copy the `https://….trycloudflare.com` URL, then restart the server so Stripe returns there:
+
+```bash
+HACKU_ORIGIN=https://….trycloudflare.com python3 web/server.py
+```
+
+The quick-tunnel URL changes every run. A named tunnel with a fixed hostname needs a Cloudflare zone and `cloudflared tunnel login`. Store checkout on `/orders.html` still uses Chrome on this Mac.
 
 ## Going live
 

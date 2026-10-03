@@ -59,6 +59,9 @@ class Handler(SimpleHTTPRequestHandler):
 
     def do_GET(self):
         url = urlparse(self.path)
+        if url.path == "/health":
+            self.send_json(200, {"ok": True})
+            return
         if url.path == "/api/checkout/status":
             session = (parse_qs(url.query).get("session") or [""])[0]
             self.pay_reply(lambda: checkout.status(session))

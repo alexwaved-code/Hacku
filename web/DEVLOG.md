@@ -340,3 +340,11 @@ The sheet under the input is gone. Next-step chips sit under the latest answer a
 
 `node --check static/app.js`. The footer is the composer only; no handle, grip, or tool rows.
 
+## 2026-10-03 17:10
+
+The chat server can sit on a public HTTPS URL. `HACKU_ORIGIN` is the Stripe return base. `GET /health` answers `{ok: true}`. A Cloudflare quick tunnel on this Mac publishes `http://127.0.0.1:8765`.
+
+**Checked**
+
+Local and public `/health` both return `{"ok": true}`. The public page loaded and answered 「你在嗎？」 with 「在，有什麼可以幫你？」.
+
