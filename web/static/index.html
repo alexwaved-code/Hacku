@@ -60,29 +60,50 @@
       </aside>
       <main class="chat">
         <header class="chat-header">
-          <button type="button" id="fold-chats" class="icon-btn fold-chats" data-i18n-attr="aria-label:foldChats,title:foldChats" aria-label="收起對話列表" title="收起對話列表">
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-              <rect x="4" y="5" width="16" height="14" rx="2" fill="none" stroke="currentColor" stroke-width="2"></rect>
-              <path d="M10 5v14M8 12H5.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"></path>
-            </svg>
-          </button>
-          <button type="button" id="open-chats" class="icon-btn menu-btn" data-i18n-attr="aria-label:chatHistory" aria-label="對話紀錄" aria-controls="side-chats">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h10" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"></path></svg>
-          </button>
+          <div class="header-rail header-lead">
+            <button type="button" id="fold-chats" class="rail-btn fold-chats" data-i18n-attr="aria-label:foldChats,title:foldChats" aria-label="收起對話列表" title="收起對話列表">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M15 6l-6 6 6 6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path>
+              </svg>
+            </button>
+            <button type="button" id="open-chats" class="rail-btn menu-btn" data-i18n-attr="aria-label:chatHistory" aria-label="對話紀錄" aria-controls="side-chats">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h10" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"></path></svg>
+            </button>
+          </div>
           <div class="chat-heading">
             <h1 id="chat-title">新對話</h1>
           </div>
-          <div class="header-actions">
-            <div class="lang-switch lang-narrow" role="group" data-i18n-attr="aria-label:language" aria-label="語言">
-              <button type="button" data-lang="zh" aria-pressed="true">中</button>
-              <button type="button" data-lang="en" aria-pressed="false">EN</button>
+          <div class="header-rail header-trail">
+            <div class="cart-toggle-wrap">
+              <button type="button" id="cart-toggle" class="rail-btn cart-mark" data-i18n-attr="aria-label:cart" aria-label="購物車" aria-expanded="true">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M6 6h15l-1.6 9H8L6 6zm0 0L5 3H2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path>
+                  <circle cx="9" cy="20" r="1.2" fill="currentColor"></circle>
+                  <circle cx="18" cy="20" r="1.2" fill="currentColor"></circle>
+                </svg>
+              </button>
+              <span id="cart-toggle-count" class="cart-toggle-count" hidden></span>
             </div>
-            <button type="button" id="new-chat-narrow" class="icon-btn" data-i18n-attr="aria-label:newChat,title:newChat" aria-label="新對話" title="新對話">
-              <svg viewBox="0 0 24 24" aria-hidden="true">
-                <path d="M12 5v14M5 12h14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"></path>
-              </svg>
-            </button>
-            <a id="cart-link" class="pill" href="pay.html"><span data-i18n="cart">購物車</span><span id="cart-count"></span></a>
+            <div class="header-actions">
+              <div class="lang-switch lang-narrow" role="group" data-i18n-attr="aria-label:language" aria-label="語言">
+                <button type="button" data-lang="zh" aria-pressed="true">中</button>
+                <button type="button" data-lang="en" aria-pressed="false">EN</button>
+              </div>
+              <button type="button" id="new-chat-narrow" class="icon-btn" data-i18n-attr="aria-label:newChat,title:newChat" aria-label="新對話" title="新對話">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M12 5v14M5 12h14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"></path>
+                </svg>
+              </button>
+              <a id="cart-link" class="pill cart-link" href="pay.html" data-i18n-attr="aria-label:cart" aria-label="購物車">
+                <svg class="cart-link-mark" viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M6 6h15l-1.6 9H8L6 6zm0 0L5 3H2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path>
+                  <circle cx="9" cy="20" r="1.2" fill="currentColor"></circle>
+                  <circle cx="18" cy="20" r="1.2" fill="currentColor"></circle>
+                </svg>
+                <span class="cart-link-label" data-i18n="cart">購物車</span>
+                <span id="cart-count" class="cart-link-count"></span>
+              </a>
+            </div>
           </div>
         </header>
         <div class="feed">
@@ -116,16 +137,6 @@
         </footer>
       </main>
       <aside class="side cart-panel" id="side-cart-panel" data-i18n-attr="aria-label:cart" aria-label="購物車">
-        <div class="cart-toggle-wrap">
-          <button type="button" id="cart-toggle" class="cart-mark" data-i18n-attr="aria-label:cart" aria-label="購物車" aria-expanded="true">
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M6 6h15l-1.6 9H8L6 6zm0 0L5 3H2" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
-              <circle cx="9" cy="20" r="1.4" fill="currentColor"></circle>
-              <circle cx="18" cy="20" r="1.4" fill="currentColor"></circle>
-            </svg>
-          </button>
-          <span id="cart-toggle-count" class="cart-toggle-count" hidden></span>
-        </div>
         <div class="cart-slide">
         <div class="cart-head">
           <h2 data-i18n="cart">購物車</h2>

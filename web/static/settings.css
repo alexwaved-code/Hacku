@@ -142,7 +142,7 @@
   font-weight: 650;
 }
 
-.chat-header > div:first-child {
+.chat-header > div:not(.header-rail) {
   flex: 1;
   min-width: 0;
 }

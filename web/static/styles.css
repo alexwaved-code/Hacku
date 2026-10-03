@@ -12,6 +12,7 @@
   --accent: #f2b84b;
   --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
   --shadow: 0 1px 2px rgba(28, 25, 21, 0.04), 0 8px 24px rgba(28, 25, 21, 0.06);
+  --side: 280px;
 }
 
 * {
@@ -36,10 +37,12 @@ button {
 
 .app {
   display: grid;
-  grid-template-columns: 256px minmax(0, 1fr) auto;
+  grid-template-columns: var(--side) minmax(0, 1fr) var(--side);
   height: 100dvh;
   min-height: 100%;
+  overflow: hidden;
   background: var(--panel);
+  transition: grid-template-columns 0.42s var(--ease);
 }
 
 [hidden] {
@@ -546,73 +549,36 @@ button {
 
 .cart-panel {
   position: relative;
-  width: 320px;
+  width: auto;
+  min-width: 0;
   background: var(--panel);
-  transition: width 0.42s var(--ease);
-}
-
-.cart-panel.collapsed {
-  width: 0;
-  padding: 0;
 }
 
 .cart-toggle-wrap {
-  position: absolute;
-  top: 14px;
-  left: 12px;
-  z-index: 4;
+  position: relative;
   display: flex;
   align-items: center;
-  gap: 6px;
-}
-
-.cart-panel.collapsed .cart-toggle-wrap {
-  position: fixed;
-  top: 16px;
-  right: 16px;
-  left: auto;
-  z-index: 5;
 }
 
 .cart-toggle-count {
   display: none;
   place-items: center;
-  min-width: 22px;
-  height: 22px;
-  padding: 0 6px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
   border-radius: 999px;
-  background: var(--accent);
-  color: var(--ink);
-  font-size: 12px;
-  font-weight: 750;
+  background: var(--ink);
+  color: var(--user-text);
+  font-size: 10px;
+  font-weight: 700;
   font-variant-numeric: tabular-nums;
 }
 
-.cart-panel.collapsed .cart-toggle-count:not([hidden]) {
+.app:has(.cart-panel.collapsed) .cart-toggle-count:not([hidden]) {
   display: grid;
   position: absolute;
-  top: -5px;
-  right: -5px;
-  z-index: 2;
-  min-width: 18px;
-  height: 18px;
-  padding: 0 4px;
-  border: 2px solid var(--panel);
-  font-size: 11px;
-}
-
-.app > .chat {
-  margin-inline: 24px;
-  transition: margin-inline 0.42s var(--ease);
-}
-
-.app:has(.cart-panel.collapsed) > .chat {
-  margin-right: 0;
-}
-
-.app:has(.cart-panel.collapsed) > .chat .messages,
-.app:has(.cart-panel.collapsed) > .chat .dock {
-  padding-right: 44px;
+  top: -3px;
+  right: -3px;
 }
 
 .cart-slide {
@@ -630,7 +596,7 @@ button {
 }
 
 .cart-panel.collapsed .cart-slide {
-  transform: translateX(340px);
+  transform: translateX(calc(var(--side) + 20px));
   pointer-events: none;
 }
 
@@ -639,7 +605,7 @@ button {
   align-items: center;
   gap: 10px;
   min-height: 32px;
-  padding: 0 12px 0 42px;
+  padding: 0 12px;
 }
 
 .cart-head h2 {
@@ -658,9 +624,9 @@ button {
   height: 32px;
   padding: 0;
   border: 0;
-  border-radius: 999px;
-  background: var(--ink);
-  color: var(--user-text);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
   cursor: pointer;
 }
 
@@ -1263,6 +1229,51 @@ body > .chat {
   border-bottom: 1px solid var(--line);
 }
 
+.header-rail {
+  display: flex;
+  align-items: center;
+  flex: 0 0 40px;
+  width: 40px;
+  min-width: 40px;
+  max-width: 40px;
+}
+
+.header-trail {
+  justify-content: flex-end;
+}
+
+.rail-btn {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.rail-btn:hover {
+  color: var(--ink);
+  background: var(--paper);
+}
+
+.rail-btn svg {
+  width: 16px;
+  height: 16px;
+}
+
+.rail-btn.fold-chats,
+.rail-btn.menu-btn {
+  display: none;
+}
+
+.app:has(.cart-panel.collapsed) > .chat {
+  border-right: 0;
+}
+
 .menu-btn,
 .header-actions {
   position: relative;
@@ -1270,12 +1281,10 @@ body > .chat {
 }
 
 .chat-heading {
-  position: absolute;
-  left: 50%;
-  width: min(52%, 240px);
+  flex: 1;
   min-width: 0;
+  text-align: center;
   pointer-events: none;
-  transform: translateX(-50%);
 }
 
 #chat-title {
@@ -1328,6 +1337,23 @@ body > .chat {
 .pill:disabled {
   opacity: 0.45;
   cursor: default;
+}
+
+.cart-link {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.cart-link-mark {
+  display: none;
+  width: 18px;
+  height: 18px;
+}
+
+.cart-link-count:empty {
+  display: none;
 }
 
 .feed {
@@ -3161,6 +3187,7 @@ a.card:hover .pic img {
   .app {
     display: block;
     height: auto;
+    overflow: visible;
   }
 
   .side {
@@ -3193,7 +3220,7 @@ a.card:hover .pic img {
   }
 
   .drawer-close,
-  .menu-btn {
+  .rail-btn.menu-btn {
     display: grid;
   }
 
@@ -3218,40 +3245,75 @@ a.card:hover .pic img {
     margin: 0 auto;
     border: 0;
   }
+
+  .header-trail .cart-toggle-wrap {
+    display: none;
+  }
+
+  .header-rail {
+    flex: none;
+    width: auto;
+    min-width: 0;
+  }
 }
 
 @media (min-width: 901px) {
-  .fold-chats {
+  .rail-btn.fold-chats {
     display: grid;
   }
 
-  body.chats-folded .fold-chats {
+  body.chats-folded .rail-btn.fold-chats {
     display: none;
   }
 
   body.chats-folded .app {
-    grid-template-columns: minmax(0, 1fr) 320px;
+    grid-template-columns: 0 minmax(0, 1fr) var(--side);
   }
 
   body.chats-folded .side-chats {
-    display: none;
+    width: 0;
+    min-width: 0;
+    padding: 0;
+    overflow: hidden;
+    visibility: hidden;
+    pointer-events: none;
   }
 
-  body.chats-folded .menu-btn {
+  .app:has(.cart-panel.collapsed) .cart-panel {
+    width: 0;
+    min-width: 0;
+    padding: 0;
+    overflow: hidden;
+    visibility: hidden;
+    pointer-events: none;
+  }
+
+  body.chats-folded .rail-btn.menu-btn {
     display: grid;
+  }
+
+  .app:has(.cart-panel.collapsed) {
+    grid-template-columns: var(--side) minmax(0, 1fr) 0;
+  }
+
+  body.chats-folded .app:has(.cart-panel.collapsed) {
+    grid-template-columns: 0 minmax(0, 1fr) 0;
+  }
+
+  body.chats-folded .app:has(.cart-panel.collapsed) .feed,
+  body.chats-folded .app:has(.cart-panel.collapsed) .dock {
+    width: 100%;
+    max-width: 760px;
+    margin-inline: auto;
   }
 
   .app .chat-header {
     min-height: 44px;
-    padding: 8px 28px;
+    padding: 8px 20px;
   }
 
   .app .chat-header .header-actions {
     display: none;
-  }
-
-  .app .chat-header .chat-heading {
-    width: min(70%, 360px);
   }
 }
 
@@ -3259,9 +3321,45 @@ a.card:hover .pic img {
   .chat-header .lang-narrow {
     display: none;
   }
+}
 
-  .chat-heading {
-    width: min(32%, 120px);
+@media (orientation: landscape) and (max-height: 520px) {
+  .chat-header .lang-narrow {
+    display: none;
+  }
+
+  #cart-link.cart-link {
+    width: 36px;
+    height: 36px;
+    padding: 0;
+    border-radius: 10px;
+    justify-content: center;
+    gap: 0;
+  }
+
+  #cart-link .cart-link-label {
+    display: none;
+  }
+
+  #cart-link .cart-link-mark {
+    display: block;
+  }
+
+  #cart-link .cart-link-count:not(:empty) {
+    position: absolute;
+    top: -4px;
+    right: -4px;
+    display: grid;
+    place-items: center;
+    min-width: 16px;
+    height: 16px;
+    padding: 0 4px;
+    border-radius: 999px;
+    background: var(--ink);
+    color: var(--user-text);
+    font-size: 10px;
+    font-weight: 700;
+    line-height: 1;
   }
 }
 
