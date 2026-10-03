@@ -4,7 +4,11 @@
 
 Hack U Shop is an AI shopping agent. You tell it what you want in one sentence, and it searches real stores, shows real products with real prices, picks one and says why, and buys it for you — but only inside a spending limit you signed, and only after you press pay.
 
-Live site: https://hacku-production.up.railway.app
+[![Hack U Shop demo video](web/static/demo-cover.jpg)](https://github.com/alexwaved-code/Hacku-shop-oiiaii/releases/download/demo/Hack-U-Shop-Demo.mp4)
+
+- **Live site:** https://hacku-production.up.railway.app
+- **Demo video (88 s, 1080p):** [Hack-U-Shop-Demo.mp4](https://github.com/alexwaved-code/Hacku-shop-oiiaii/releases/download/demo/Hack-U-Shop-Demo.mp4)
+- **Pitch deck:** [Hack-U-Shop-Pitch.pptx](https://github.com/alexwaved-code/Hacku-shop-oiiaii/releases/download/demo/Hack-U-Shop-Pitch.pptx)
 
 ## The problem
 
@@ -77,49 +81,49 @@ Every tool, route, environment variable, and the full demo script are in [web/RE
 
 ---
 
-## 協作方式
+## Team workflow
 
-四組人共用這一個 GitHub repo。GitHub 是唯一的工作黑板。Agent 不另外開聊天室。
+Four groups share this GitHub repo. GitHub is the only shared board; agents do not open a separate chat.
 
-### 第一次（每人一次）
+### First time (once per person)
 
-1. 跟 repo 負責人要邀請，加入 `alexwaved-code/Hacku`。
-2. Clone：
+1. Ask the repo owner for an invite to `alexwaved-code/Hacku-shop-oiiaii`.
+2. Clone it:
 
 ```bash
-git clone https://github.com/alexwaved-code/Hacku.git
-cd Hacku
+git clone https://github.com/alexwaved-code/Hacku-shop-oiiaii.git
+cd Hacku-shop-oiiaii
 ```
 
-3. 在 `collab/groups.md` 找到自己的組（G1–G4）。
-4. 本機寫入組別（這個檔不會進 git）：
+3. Find your group (G1–G4) in `collab/groups.md`.
+4. Write your group id locally (this file is not committed):
 
 ```bash
 echo G1 > collab/.agent-id
 ```
 
-把 `G1` 換成你的組。
+Replace `G1` with your group.
 
-### 之後每次開工
+### Every session
 
 ```bash
 git checkout g1
 git pull --rebase origin main
 ```
 
-只改自己組擁有的路徑。做完一段能跑的東西：
+Change only the paths your group owns. When a piece works:
 
 ```bash
 git add …
-git commit -m "[G1] 簡短說明為什麼改"
+git commit -m "[G1] Short reason for the change"
 git pull --rebase origin main
 git push -u origin g1
 ```
 
-把 `g1` / `[G1]` 換成自己的組。
+Replace `g1` / `[G1]` with your group.
 
-### 誰進 main
+### Who merges into main
 
-只有整合者把 `g1`–`g4` 合進 `main`。其他人不要直接 push `main`。不要 force-push。
+Only the integrator merges `g1`–`g4` into `main`. Nobody else pushes `main`. No force-push.
 
-完整規則見 [COLLAB.md](COLLAB.md)。組別與目錄見 [collab/groups.md](collab/groups.md)。
+Full rules are in [COLLAB.md](COLLAB.md). Groups and folders are in [collab/groups.md](collab/groups.md).
