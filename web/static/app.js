@@ -1259,6 +1259,9 @@ function restoreChat() {
     els.input.placeholder = t("askPlaceholder");
   }
   setQuick(saved.next);
+  for (const item of els.list.children) {
+    if (turnPaid(item)) stripRegenerate(item);
+  }
   paintChatTitle();
 }
 
@@ -1458,6 +1461,7 @@ function createTurn() {
         if (entry.kind === "receipt" && entry.paid) {
           HackuCart.removeMany((entry.items || []).map((line) => line.id));
           updateCartCount();
+          stripRegenerate(item);
         }
         scrollToEnd();
       }
@@ -1497,13 +1501,12 @@ function createTurn() {
           copy.lastChild.textContent = t("copyFailed");
         }
       });
-      // A turn that paid must not be run again: regenerating would repeat the purchase.
-      const paid = (item._receipts || []).some((entry) => entry.paid || entry.result?.paid);
-      const retry = paid
+      const retry = turnPaid(item)
         ? null
         : h("button", { type: "button", class: "act-btn act-retry", title: t("regenerate") }, retryIcon(), t("regenerate"));
       retry?.addEventListener("click", onRetry);
       if (said) item.append(h("div", { class: "turn-actions" }, copy, retry));
+      if (turnPaid(item)) stripRegenerate(item);
       if (!state.pendingAsk && lastQuick.length) {
         item.append(
           h(
@@ -1842,6 +1845,18 @@ function cartIcon() {
   return svg;
 }
 
+function paymentSucceeded(entry) {
+  return Boolean(entry && (entry.paid === true || entry.result?.paid === true));
+}
+
+function turnPaid(item) {
+  return Boolean(item?.querySelector?.(".receipt.paid")) || (item?._receipts || []).some(paymentSucceeded);
+}
+
+function stripRegenerate(root) {
+  root?.querySelectorAll?.(".act-retry").forEach((node) => node.remove());
+}
+
 function paymentCard(entry) {
   return entry.kind === "order" ? orderCard(entry) : receiptCard(entry);
 }
@@ -1966,7 +1981,7 @@ function receiptCard(receipt) {
   const items = (receipt.items || []).map((entry) =>
     h("li", {}, `${entry.name}${entry.qty > 1 ? ` × ${entry.qty}` : ""}`, h("span", { class: "receipt-store" }, entry.store))
   );
-  return h(
+  const card = h(
     "div",
     { class: "receipt paid" },
     paidMark(),
@@ -1981,6 +1996,8 @@ function receiptCard(receipt) {
       receipt.hash ? h("a", { class: "receipt-link", href: "pay.html#log" }, t("seeLog")) : null
     )
   );
+  queueMicrotask(() => stripRegenerate(card.closest(".turn")));
+  return card;
 }
 
 async function finishStripeReturn() {
@@ -2003,6 +2020,9 @@ async function finishStripeReturn() {
     }
   }
   if (!order.result) delete order.session;
+  for (const item of els.list.children) {
+    if (turnPaid(item)) stripRegenerate(item);
+  }
   syncOrders();
   saveChat();
   restoreChat();
@@ -2345,3 +2365,6 @@ saveChat();
 renderChatList();
 finishStripeReturn();
 renderQuick();
+window.addEventListener("pageshow", (event) => {
+  if (event.persisted) restoreChat();
+});
