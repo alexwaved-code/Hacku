@@ -1497,8 +1497,12 @@ function createTurn() {
           copy.lastChild.textContent = t("copyFailed");
         }
       });
-      const retry = h("button", { type: "button", class: "act-btn act-retry", title: t("regenerate") }, retryIcon(), t("regenerate"));
-      retry.addEventListener("click", onRetry);
+      // A turn that paid must not be run again: regenerating would repeat the purchase.
+      const paid = (item._receipts || []).some((entry) => entry.paid || entry.result?.paid);
+      const retry = paid
+        ? null
+        : h("button", { type: "button", class: "act-btn act-retry", title: t("regenerate") }, retryIcon(), t("regenerate"));
+      retry?.addEventListener("click", onRetry);
       if (said) item.append(h("div", { class: "turn-actions" }, copy, retry));
       if (!state.pendingAsk && lastQuick.length) {
         item.append(
