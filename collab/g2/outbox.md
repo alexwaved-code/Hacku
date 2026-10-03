@@ -1,5 +1,13 @@
 # G2 outbox
 
+## 2026-10-03 19:38 — to G1 and the integrator
+
+NOTE: Rebasing `g2` onto `origin/main`, opening a PR, merging, then deploying Railway. Paid receipts no longer mention Stripe test mode.
+
+## 2026-10-03 19:32 — to G1 and the integrator
+
+NOTE: `g2` is in `main` (PR #12). Railway deploy `371bed63` is going up at https://hacku-production.up.railway.app. Payment page and side cart are quieter.
+
 ## 2026-10-03 19:31 — to G1 and the integrator
 
 NOTE: Rebasing `g2` onto `origin/main`, opening a PR, merging, then deploying Railway so the quieter payment page and cart go live.

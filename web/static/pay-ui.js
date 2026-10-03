@@ -104,7 +104,6 @@ function doneCard(receipt) {
     mark(),
     el("h2", "", t("paid", money(receipt.amount, receipt.currency))),
     receipt.ship_to ? el("p", "pay-ship", t("shipTo", receipt.ship_to)) : null,
-    el("p", "pay-note", t("paidTest")),
     Object.assign(el("a", "pay-home", t("payBackChat")), { href: "./" })
   );
 }

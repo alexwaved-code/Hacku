@@ -1967,7 +1967,6 @@ function receiptCard(receipt) {
       h("p", { class: "receipt-title" }, t("paid", HackuMoney.text(receipt.amount, receipt.currency))),
       h("ul", { class: "receipt-items" }, items),
       receipt.ship_to ? h("p", { class: "receipt-line" }, t("shipTo", receipt.ship_to)) : null,
-      h("p", { class: "receipt-line" }, t("paidTest")),
       receipt.hash ? h("p", { class: "receipt-line mono" }, t("record", receipt.hash.slice(0, 12))) : null
     )
   );
