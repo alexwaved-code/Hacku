@@ -364,3 +364,11 @@ Ask cards show options in a row. Each question can be skipped or answered in the
 
 `node --check static/app.js`. A three-question card accepted a chip, a skip, and a written answer, then enabled 「送出答案」.
 
+
+## 2026-10-04 01:40
+
+The assistant can pay with a saved card. The shopper saves a card once on a Stripe setup page from `/pay.html`; the address comes from 設定. `buy` then runs the gates and charges the card off-session, and the chat shows the receipt. Every refused order is chained with the rule that stopped it, and `/pay.html#log` lists the chain.
+
+**Checked**
+
+68 unit tests pass, including `tests/test_wallet.py`. Local run with a Stripe test key: 4242 saved through the setup page; 「幫我買購物車裡的小米藍牙音箱」 paid HK$109 in about ten seconds with no payment page (`pi_3UMWlpRgWhRX8azj0B3EUAJx`); two Sony speakers at HK$598 were refused under `mandate.per_order_cap`; after revoking, one Sony at HK$299 was refused under `mandate.revoked`. The chain stayed intact.

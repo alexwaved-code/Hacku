@@ -2,9 +2,10 @@
 
 A chat page that researches real products, in Hong Kong by default or in one store or country the user names, and buys them through Stripe Checkout. It also answers ordinary questions. The browser talks only to `web/server.py`. Keys stay in local `web/.env`.
 
-The shopper signs a spending mandate first: a cap per order for each currency, valid 1 to 30 days. There are two ways to pay inside it:
+The shopper signs a spending mandate first: a cap per order for each currency, valid 1 to 30 days. There are three ways to pay inside it:
 
-- **The assistant prepares, the shopper confirms.** The shopper says 「幫我買第一個」 in the chat. The assistant calls `buy` with the card's ref. The server checks the mandate and the cooling period, and the chat shows a 「確認訂單」 card with the items, the total, and the cap. Nothing is paid until the shopper presses 「確認付款」. Then the verifier rates the items and the page goes to Stripe Checkout, where the shopper enters a card and a Hong Kong delivery address. Back in the chat, the card turns into a receipt with the address. 「取消」 closes the order unpaid.
+- **The assistant pays with a saved card.** On `/pay.html` the shopper saves a card once on a Stripe setup page (「用 Stripe 存一張卡」). The delivery address comes from 設定. After that, 「幫我買購物車裡的小米藍牙音箱」 is enough: the assistant calls `buy`, the server runs every gate below, charges the saved card off-session through a Stripe PaymentIntent, and the chat shows the receipt with the card's last four digits, the address, and the record hash. No payment page opens. Over the cap, revoked, expired, or a failed verifier rating means no charge and a red card that names the rule.
+- **The assistant prepares, the shopper confirms.** The shopper says 「幫我買第一個」 in the chat. The assistant calls `buy` with the card's ref. The server checks the mandate and the cooling period, and without a saved card the chat shows a 「確認訂單」 card with the items, the total, and the cap. Nothing is paid until the shopper presses 「確認付款」. Then the verifier rates the items and the page goes to Stripe Checkout, where the shopper enters a card and a Hong Kong delivery address. Back in the chat, the card turns into a receipt with the address. 「取消」 closes the order unpaid.
 - **The shopper pays.** Cards go to the cart, and the shopper presses pay on Stripe Checkout.
 
 With a test key, no real money moves, and the store does not get an order. With a live key and `HACKU_LIVE=1`, the shopper pays for real, and the order is placed with the store from the order desk (`/orders.html`): the assistant fills the store's cart and delivery address in a Chrome window and stops at the store's payment page, and a person pays there.
@@ -133,19 +134,26 @@ Search results are cached in `data/cache.db` for 6 hours and page reads for 2 ho
 | `POST /api/checkout` | `{"items": [{name, store, price, currency, url, image, id, qty, sig}]}` | Cart checkout. `{url, id, ratings}`. The page opens `url` and comes back to `/cart.html`. Errors: 403 mandate, live key, live cap, or cooling; 409 seal or verifier rating; 503 no key. |
 | `POST /api/pay` | `{"items": [...]}`, the sealed items from an order card | Called by 「確認付款」. Same gates and result as `/api/checkout`; Stripe comes back to the chat at `/`. |
 | `GET /api/checkout/status?session=cs_...` | | `{paid, status, amount, currency, items, hash, live, ship_to}`, read back from Stripe. The first paid read chains the payment and stores the delivery address. |
+| `GET /api/wallet` | | `{saved, brand, last4, ship_to}` for the saved card |
+| `POST /api/wallet/setup` | `{"ship": {name, phone, line1, line2, city}}` | Creates a Stripe customer and a setup-mode Checkout page. `{url, id}`. Stripe comes back to `/pay.html?card=cs_...`. |
+| `GET /api/wallet/confirm?session=cs_...` | | Reads the setup page back from Stripe and keeps the customer id, payment-method id, brand, last four digits, and address. Chains `card_saved`. |
+| `POST /api/wallet/forget` | | Drops the saved card. Chains `card_removed`. |
+| `GET /api/log` | | `{chain_ok, entries}`, the newest 40 hash-chain entries. A `refused` entry has `rule`, `reason`, `total`, `cap`, and `by`. |
 | `GET /api/orders` | | `{chain_ok, live, orders: [{id, currency, total, items, hash, via, live, at}]}`, newest first. `via` is `agent` or `cart`. |
 | `GET /api/fulfil` | | Paid orders for the order desk, with `shipping` (name, phone, email, address), `fulfil`, `fulfil_note`, and `store_order`. |
 | `POST /api/fulfil/start` | `{"id": "cs_..."}` | Starts filling the store's cart in Chrome. `fulfil` goes to `filling`, then `cart_ready`, `opened`, `needs_login`, or `failed`. |
 | `POST /api/fulfil/placed` | `{"id", "store_order"}` | Records the store's order number. `fulfil` becomes `placed`. |
 | `POST /api/fulfil/refund` | `{"id"}` | Refunds the whole payment in Stripe, once. `fulfil` becomes `refunded`. |
 
-A checkout page opens only when all of these pass, in this order:
+A checkout page opens, or the saved card is charged, only when all of these pass, in this order:
 
 1. The Stripe key is a test key, or a live key with `HACKU_LIVE=1`. With a live key, the order is in HKD and at most HK$100.
 2. Every item's seal matches, every item has a price, and all items share one currency.
 3. The stored mandate's signature matches, it is not revoked or expired, it has a cap for the currency, and the order total is within that cap.
 4. No cooling period is open. A verifier rating of 1 on any item starts a 10-minute cooling period.
 5. The verifier rates every item 3. Each item is rated in its own call, all at once.
+
+Each failed gate adds a `refused` entry to the hash chain with the rule that stopped it: `live.currency`, `live.cap`, `mandate.missing`, `mandate.signature`, `mandate.revoked`, `mandate.expired`, `mandate.currency`, `mandate.per_order_cap`, `cooling`, `verifier`, `card.missing`, or `card.declined`. The 授權紀錄 card on `/pay.html#log` lists them next to the mandate, card, and payment entries.
 
 Stripe Checkout collects a Hong Kong delivery address and a phone number. Mandates, orders, delivery addresses, the cooling period, and the hash chain are stored in `data/hacku.db`, so a revoked mandate stays revoked after a restart. Every mandate, revocation, checkout, payment, placed order, refund, and cooling period adds one entry to the chain; a paid order shows the first 12 characters of its entry hash.
 
@@ -163,8 +171,15 @@ The window always stops at the store's payment page. Whoever places the order pa
 
 ## Demo script
 
-1. `python3 web/server.py`, then open http://127.0.0.1:8765/cart.html
-2. Enter caps (for example HKD 100 and CNY 100), pick 7 days, press 「簽署授權」.
+1. `python3 web/server.py`, fill in 設定 (name, phone, address), then open http://127.0.0.1:8765/pay.html
+2. Enter caps (for example HKD 300), pick 7 days, press 「簽署付款授權」.
+3. Press 「用 Stripe 存一張卡」, enter the test card, and save. The page shows 「Visa 尾號 4242」 and the address.
+4. Back in the chat, with a speaker in the cart, say 「幫我買購物車裡的小米藍牙音箱」. About ten seconds later a green receipt shows the amount, the card, the address, and the record. No payment page opens.
+5. Put two of a HK$299 item in the cart and ask it to buy them. The red card says HK$598 is over the HK$300 cap and names `mandate.per_order_cap`. Press 「看授權紀錄」: the stop is in the chain with the total, the cap, and the rule.
+6. Press 「撤銷授權」 and ask for one. The red card names `mandate.revoked`.
+
+Without a saved card, steps 1 and 2 are the same, then each order goes through Stripe Checkout:
+
 3. Press 「返回對話」, then 「新對話」. Ask 「我想買 Street Value 的 Essential 60W USB-C 充電線」 or 「USB-C 充電線，HK$100 以內，1 米，支援 60W，直接推薦」. A search takes about 20 to 40 seconds.
 4. Say 「幫我買」. A 「確認訂單」 card shows the item, the total, the cap, and test or live mode. Nothing is paid yet.
 5. Press 「確認付款」. The page goes to Stripe Checkout. Enter the test card and a Hong Kong address, and pay.

@@ -1,20 +1,21 @@
-"""Payments through Stripe Checkout, from the cart or from the agent's order card.
+"""Payments through Stripe: Checkout from the cart, or the agent charging the saved card.
 
-Both paths pass the same gates: the mandate covers the order total,
+Every path passes the same gates: the mandate covers the order total,
 no cooling period is open, and the verifier rates every item 3. With a live key, an order must also
-be in a currency listed in LIVE_CAPS and within that cap.
-Stripe Checkout collects a Hong Kong delivery address. A paid order then waits to be placed with the store.
+be in a currency listed in LIVE_CAPS and within that cap. Each refusal is chained with the rule that
+stopped it. A paid order then waits to be placed with the store.
 """
 
 import json
 import re
+import secrets
 from datetime import datetime, timedelta
 
 import cards
 import config
 import money
 
-from . import mandate, store, stripe_api, verifier
+from . import mandate, store, stripe_api, verifier, wallet
 from .stripe_api import CheckoutError
 
 MAX_ITEMS = 10
@@ -34,7 +35,7 @@ def quote(items):
     stripe_api.key()
     lines = _check_items(items)
     currency, total = lines[0]["currency"], _total(lines)
-    _gates(currency, total, mandate.now())
+    _gates(currency, total, mandate.now(), "agent")
     return {
         "currency": currency,
         "total": total,
@@ -51,7 +52,7 @@ def create(items, via="cart"):
     currency, total = lines[0]["currency"], _total(lines)
     live = stripe_api.live()
     at = mandate.now()
-    ratings = _approve(lines, currency, total, at)
+    ratings = _approve(lines, currency, total, at, via)
     back = f"{config.ORIGIN}{RETURN_TO.get(via, '/pay.html')}"
 
     form = [
@@ -81,6 +82,80 @@ def create(items, via="cart"):
         _record(conn, session["id"], lines, currency, total, at, via, live)
         store.append(conn, "checkout_opened", {"session": session["id"], "currency": currency, "total": total, "live": live}, at)
     return {"url": session["url"], "id": session["id"], "ratings": ratings}
+
+
+def charge(items, via="agent"):
+    """Charge the saved card for an order the gates allow. No Stripe page opens. Returns the receipt."""
+    stripe_api.key()
+    lines = _check_items(items)
+    currency, total = lines[0]["currency"], _total(lines)
+    live = stripe_api.live()
+    at = mandate.now()
+    card = wallet.saved()
+    if not card:
+        _refuse("card.missing", "還沒有存卡給代理付款。請到付款頁存一張卡。", 409, currency, total, at, via)
+    ratings = _approve(lines, currency, total, at, via)
+    order_id = f"ord_{secrets.token_hex(10)}"
+    ship = card["ship"]
+    form = [
+        ("amount", str(sum(money.minor(line["price"], currency) * line["qty"] for line in lines))),
+        ("currency", currency.lower()),
+        ("customer", card["customer"]),
+        ("payment_method", card["payment_method"]),
+        ("payment_method_types[]", "card"),
+        ("off_session", "true"),
+        ("confirm", "true"),
+        ("description", "、".join(line["name"][:60] for line in lines)[:500]),
+        ("metadata[source]", f"hacku-{via}"),
+        ("metadata[order]", order_id),
+    ]
+    if ship.get("name") and ship.get("line1"):
+        form += [("shipping[name]", ship["name"]), ("shipping[phone]", ship.get("phone") or "")]
+        form += [(f"shipping[address][{key}]", ship.get(key) or "") for key in ("line1", "line2", "city", "country")]
+    try:
+        intent = stripe_api.call("POST", "/payment_intents", form, idempotency=order_id)
+    except CheckoutError as error:
+        _refuse("card.declined", f"Stripe 沒有扣款：{error}", 402, currency, total, at, via)
+    if intent.get("status") != "succeeded":
+        _refuse("card.declined", f"Stripe 沒有扣款，狀態是 {intent.get('status')}。", 402, currency, total, at, via)
+
+    shipping = {**ship, "email": "", "state": ""}
+    with store.db() as conn:
+        _record(conn, order_id, lines, currency, total, at, via, live)
+        receipt = store.append(
+            conn,
+            "paid",
+            {"order": order_id, "payment": intent["id"], "currency": currency, "total": total, "by": via, "live": live, "card": card["last4"]},
+            at,
+        )
+        conn.execute(
+            "UPDATE orders SET paid = 1, hash = ?, payment = ?, shipping = ?, fulfil = 'pending' WHERE id = ?",
+            (receipt, intent["id"], json.dumps(shipping, ensure_ascii=False), order_id),
+        )
+        items_out = json.loads(conn.execute("SELECT items FROM orders WHERE id = ?", (order_id,)).fetchone()["items"])
+    return {
+        "paid": True,
+        "order": order_id,
+        "currency": currency,
+        "amount": total,
+        "items": items_out,
+        "hash": receipt,
+        "live": live,
+        "ship_to": wallet.ship_line(ship),
+        "card": {"brand": card["brand"], "last4": card["last4"]},
+        "ratings": ratings,
+    }
+
+
+def log(limit=40):
+    """The newest hash-chain entries, for the shopper to read which rule allowed or stopped each payment."""
+    with store.db() as conn:
+        rows = conn.execute("SELECT seq, step, payload, hash, at FROM ledger ORDER BY seq DESC LIMIT ?", (limit,)).fetchall()
+        intact = store.chain_ok(conn)
+    return {
+        "chain_ok": intact,
+        "entries": [{"seq": row["seq"], "step": row["step"], "at": row["at"], "hash": row["hash"], **json.loads(row["payload"])} for row in rows],
+    }
 
 
 def status(session_id):
@@ -202,31 +277,39 @@ def cooling_until(at):
     return until if at < until else None
 
 
-def _gates(currency, total, at):
+def _gates(currency, total, at, via="cart"):
     if stripe_api.live():
         cap = LIVE_CAPS.get(currency)
         if cap is None:
-            raise CheckoutError(f"正式付款只收 {'、'.join(LIVE_CAPS)}，這筆是 {currency}。", 403)
+            _refuse("live.currency", f"正式付款只收 {'、'.join(LIVE_CAPS)}，這筆是 {currency}。", 403, currency, total, at, via)
         if total > cap:
-            raise CheckoutError(f"正式付款每筆最多 {money.text(cap, currency)}，這筆 {money.text(total, currency)}。", 403)
-    problem = mandate.problem(currency, total, at)
-    if problem:
-        raise CheckoutError(f"不能付款：{problem}", 403)
+            _refuse("live.cap", f"正式付款每筆最多 {money.text(cap, currency)}，這筆 {money.text(total, currency)}。", 403, currency, total, at, via)
+    found = mandate.check(currency, total, at)
+    if found:
+        _refuse(found[0], f"不能付款：{found[1]}", 403, currency, total, at, via)
     until = cooling_until(at)
     if until:
-        raise CheckoutError(f"上一次結帳有商品被驗證拒絕，冷靜期到 {until:%H:%M} 才結束。", 403)
+        _refuse("cooling", f"上一次結帳有商品被驗證拒絕，冷靜期到 {until:%H:%M} 才結束。", 403, currency, total, at, via)
 
 
-def _approve(lines, currency, total, at):
-    _gates(currency, total, at)
+def _approve(lines, currency, total, at, via="cart"):
+    _gates(currency, total, at, via)
     ratings = verifier.verify_products(_products(lines))
     if any(rating["rating"] == 1 for rating in ratings):
         _start_cooling(at)
     failed = [rating for rating in ratings if rating["rating"] != 3]
     if failed:
         names = "、".join(f"{rating['name'][:24]}（{VERDICTS.get(rating['verdict'], '未評分')}）" for rating in failed)
-        raise CheckoutError(f"驗證沒有通過：{names}", 409, {"ratings": ratings})
+        _refuse("verifier", f"驗證沒有通過：{names}", 409, currency, total, at, via, {"ratings": ratings})
     return ratings
+
+
+def _refuse(rule, reason, status, currency, total, at, via, detail=None):
+    """Chain the refusal with the rule that stopped it, then raise it."""
+    cap = (mandate.view(at).get("caps") or {}).get(currency)
+    with store.db() as conn:
+        store.append(conn, "refused", {"rule": rule, "reason": reason, "currency": currency, "total": total, "cap": cap, "by": via}, at)
+    raise CheckoutError(reason, status, {**(detail or {}), "rule": rule})
 
 
 def _record(conn, order_id, lines, currency, total, at, via, live):

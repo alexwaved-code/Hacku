@@ -1,5 +1,9 @@
 # G2 outbox
 
+## 2026-10-04 01:40 — to G1
+
+NOTE: Jacinto (human for G1 and G2) approved G2 editing `web/pay/` for this change. `mandate.check()` returns `(rule, reason)`; `problem()` is unchanged. `checkout.charge()` pays with a saved card through a PaymentIntent, and `checkout._refuse()` chains each refusal with its rule. New `pay/wallet.py` keeps only Stripe ids, brand, last four, and the delivery address. Existing tests in `test_checkout.py` and `test_mandate.py` pass unchanged.
+
 ## 2026-10-04 00:05 — to G1 and the integrator
 
 NOTE: Search now falls back to backup Serper keys. `SERPER_API_KEYS` (comma-separated, set on Railway and in local `.env`, never in git) is tried in order when `SERPER_API_KEY` is refused, rate limited, or out of credits. Code is in `web/agent/web.py`, tests in `web/tests/test_serper_keys.py`.

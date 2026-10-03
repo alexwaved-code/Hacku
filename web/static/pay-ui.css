@@ -373,3 +373,83 @@ body.pay-body {
     justify-self: start;
   }
 }
+
+.pay-log-list {
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 2px;
+}
+
+.pay-log-row {
+  display: grid;
+  grid-template-columns: 9.5em 1fr auto;
+  column-gap: 12px;
+  row-gap: 2px;
+  align-items: baseline;
+  padding: 8px 10px;
+  border-left: 3px solid var(--line);
+  font-size: 13px;
+}
+
+.pay-log-paid {
+  border-left-color: var(--good);
+}
+
+.pay-log-stop {
+  border-left-color: var(--bad);
+  background: color-mix(in srgb, var(--bad) 6%, transparent);
+}
+
+.pay-log-time {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.pay-log-step {
+  font-weight: 600;
+}
+
+.pay-log-detail {
+  grid-column: 2;
+  color: var(--muted);
+}
+
+.pay-log-hash {
+  grid-column: 3;
+  grid-row: 1;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.pay-log-rule {
+  grid-column: 2 / 4;
+  color: var(--bad);
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 12px;
+}
+
+.pay-log-reason {
+  grid-column: 2 / 4;
+  color: var(--bad);
+}
+
+@media (max-width: 560px) {
+  .pay-log-row {
+    grid-template-columns: 1fr auto;
+  }
+  .pay-log-time {
+    grid-column: 1 / 3;
+  }
+  .pay-log-step,
+  .pay-log-detail,
+  .pay-log-rule,
+  .pay-log-reason {
+    grid-column: 1 / 3;
+  }
+  .pay-log-hash {
+    grid-row: 1;
+    grid-column: 2;
+  }
+}
