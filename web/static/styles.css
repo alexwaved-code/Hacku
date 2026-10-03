@@ -1227,12 +1227,19 @@ a.card:hover .pic img {
   animation: none;
 }
 
+.card-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: auto;
+  padding: 6px 8px 8px;
+}
+
 .cart-controls {
-  position: absolute;
-  right: 10px;
-  bottom: 6px;
+  position: static;
   z-index: 2;
   display: flex;
+  flex: none;
   align-items: center;
   gap: 4px;
 }
@@ -1381,18 +1388,20 @@ a.card:hover .pic img {
 
 .go {
   display: block;
-  margin: auto 78px 8px 8px;
-  padding: 5px 0;
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  padding: 5px 6px;
   border-radius: 8px;
   background: var(--user);
   color: var(--user-text);
   font-size: 12px;
   font-weight: 600;
+  line-height: 16px;
   text-align: center;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  padding-inline: 6px;
 }
 
 .go-empty {
@@ -2836,10 +2845,13 @@ a.card:hover .pic img {
     font-size: 17px;
   }
 
+  .card-foot {
+    grid-column: 2;
+    margin: 0;
+    padding: 8px 12px 10px;
+  }
+
   .go {
-    justify-self: start;
-    margin: 8px 86px 10px 12px;
-    padding: 5px 12px;
     font-size: 13px;
   }
 }

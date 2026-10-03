@@ -1408,11 +1408,7 @@ function productCard(product) {
       h("p", { class: "rating" }, rating || ""),
       h("p", { class: "flag" }, product.flagged ? t("injected") : "")
     ),
-    h("span", { class: product.url ? "go" : "go go-empty", "aria-hidden": product.url ? null : "true" }, product.url ? (product.link_kind === "search" ? t("findStore") : t("goStore", shortStore(product.store))) : ""),
   ];
-  const card = product.url
-    ? h("a", { class: "card", href: product.url, target: "_blank", rel: "noopener noreferrer" }, content)
-    : h("div", { class: "card" }, content);
   const startQty = HackuCart.qtyOf(product);
   const add = h("button", {
     type: "button",
@@ -1454,6 +1450,15 @@ function productCard(product) {
     event.stopPropagation();
     editQty(product, qtyBtn, paintQty);
   });
+  const go = h(
+    "span",
+    { class: product.url ? "go" : "go go-empty", "aria-hidden": product.url ? null : "true" },
+    product.url ? (product.link_kind === "search" ? t("findStore") : t("goStore", shortStore(product.store))) : ""
+  );
+  content.push(h("div", { class: "card-foot" }, go, h("div", { class: "cart-controls" }, add, qtyBtn)));
+  const card = product.url
+    ? h("a", { class: "card", href: product.url, target: "_blank", rel: "noopener noreferrer" }, content)
+    : h("div", { class: "card" }, content);
   const key = HackuCart.idOf(product);
   const buy = h("button", { type: "button", class: "tool-btn buy-btn", title: t("buyNowTitle") }, lineIcon("M13 3L5 13h6l-1 8 8-10h-6l1-8z"), h("span", {}, t("buyNow")));
   const pick = h(
@@ -1462,7 +1467,7 @@ function productCard(product) {
     lineIcon("M12 4v16M8 20h8M4 8h16M7 8l-3 6a3 3 0 0 0 6 0L7 8zM17 8l-3 6a3 3 0 0 0 6 0l-3-6z"),
     h("span", {}, t("compare"))
   );
-  const wrap = h("div", { class: comparing.has(key) ? "card-wrap comparing" : "card-wrap", "data-key": key }, card, h("div", { class: "card-tools" }, pick, buy), h("div", { class: "cart-controls" }, add, qtyBtn));
+  const wrap = h("div", { class: comparing.has(key) ? "card-wrap comparing" : "card-wrap", "data-key": key }, card, h("div", { class: "card-tools" }, pick, buy));
   buy.addEventListener("click", (event) => {
     event.preventDefault();
     event.stopPropagation();
