@@ -316,3 +316,11 @@ Each cart line has 提到. Several lines can sit in the composer at once; send i
 
 Two cart lines mentioned together sent 「購物車的 c1「Anker USB-C 充電線 60W」、c2「MOMAX 10000mAh 行動電源」，這幾件怎麼樣？」. Adding Xiaomi and Sony from cards created `.cart-fly` (animation `cart-fly`) and the new rows appeared in the side cart.
 
+## 2026-10-03 16:44
+
+The strip under the input is a small drawer. The handle opens cart, checkout, orders, and new chat, plus the model's next-step chips after a reply.
+
+**Checked**
+
+Handle starts closed as 「快捷」. Opening shows the four tools and 「收起」. 購物車 on the drawer closes it and highlights the cart panel.
+

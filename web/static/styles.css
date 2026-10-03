@@ -1687,16 +1687,172 @@ a.card:hover .pic img {
   height: 14px;
 }
 
-.dock-quick {
-  margin: 10px 0 0;
+.dock-sheet {
+  margin: 8px 0 0;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: #fff;
+  box-shadow: 0 8px 22px rgba(28, 25, 21, 0.08);
+  transform-origin: bottom center;
 }
 
-.dock-quick:empty {
-  margin: 0;
+.dock-sheet.fresh {
+  animation: dock-pop 0.42s var(--ease);
 }
 
-.dock-quick .quick-row {
-  justify-content: center;
+.dock-handle {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 8px 14px 10px;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+
+.dock-handle:active {
+  cursor: grabbing;
+}
+
+.dock-grip {
+  width: 36px;
+  height: 4px;
+  border-radius: 999px;
+  background: #d4cbbd;
+  transition: background 0.15s, transform 0.2s var(--ease);
+}
+
+.dock-handle:hover .dock-grip,
+.dock-sheet.open .dock-grip {
+  background: #b7ad9e;
+}
+
+.dock-sheet.open .dock-grip {
+  transform: scaleX(1.15);
+}
+
+.dock-peek {
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 650;
+  letter-spacing: 0.02em;
+}
+
+.dock-sheet-body {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.34s var(--ease);
+}
+
+.dock-sheet.open .dock-sheet-body {
+  grid-template-rows: 1fr;
+}
+
+.dock-sheet-inner {
+  overflow: hidden;
+  padding: 0 12px 12px;
+}
+
+.dock-tools {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.dock-tool {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 4px 8px;
+  border: 1px solid transparent;
+  border-radius: 14px;
+  background: #faf8f4;
+  color: var(--ink);
+  font: inherit;
+  font-size: 11.5px;
+  font-weight: 650;
+  cursor: pointer;
+  transition: transform 0.18s var(--ease), background 0.15s, border-color 0.15s;
+}
+
+.dock-tool:hover {
+  border-color: #e4ddd2;
+  background: #fff;
+  transform: translateY(-2px);
+}
+
+.dock-tool:active {
+  transform: scale(0.94);
+}
+
+.dock-tool-icon {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 1px 4px rgba(28, 25, 21, 0.08);
+}
+
+.dock-tool-icon svg {
+  width: 18px;
+  height: 18px;
+}
+
+.dock-tool-badge {
+  position: absolute;
+  top: -5px;
+  right: -6px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--ink);
+  font-size: 10px;
+  font-weight: 750;
+  line-height: 16px;
+}
+
+.dock-next {
+  min-height: 0;
+}
+
+.dock-next:empty {
+  display: none;
+}
+
+.dock-next-title {
+  margin: 10px 2px 8px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+}
+
+.dock-next .quick-row {
+  justify-content: flex-start;
+}
+
+.dock-next .quick-chip {
+  background: #faf8f4;
+}
+
+@keyframes dock-pop {
+  0% { transform: translateY(8px) scale(0.98); }
+  55% { transform: translateY(-3px) scale(1.01); }
+  100% { transform: translateY(0) scale(1); }
 }
 
 .mention-bar {

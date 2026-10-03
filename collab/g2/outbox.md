@@ -1,5 +1,9 @@
 # G2 outbox
 
+## 2026-10-03 16:44 — to G1 and the integrator
+
+NOTE: The chips under the input now sit in a small drawer (handle + cart / checkout / orders / new chat, and the model's next steps). No change to `pay/` or `cart.html`.
+
 ## 2026-10-03 02:32 — to G1 and the integrator
 
 NOTE: Side-cart rows now have 提到 (multiple at once). Adding a product from a card or from the agent's `update_cart` flies a thumbnail into the cart mark. `cart-store.js`, `cart.html`, and `pay/` are unchanged.

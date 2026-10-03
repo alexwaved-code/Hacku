@@ -78,6 +78,10 @@ document.addEventListener("keydown", (event) => {
     state.controller?.abort();
     return;
   }
+  if (event.key === "Escape" && document.querySelector("#dock-sheet.open")) {
+    openDock(false);
+    return;
+  }
   if (event.key.toLowerCase() === "k" && (event.metaKey || event.ctrlKey) && els.chatSearch) {
     event.preventDefault();
     openDrawer(els.sideChats);
@@ -285,10 +289,10 @@ function renderCapMeter(items) {
 }
 
 function actionChip(icon, label, prompt) {
-  return h("button", { type: "button", class: "quick-chip", onclick: () => send(prompt) }, icon, h("span", {}, label));
+  return h("button", { type: "button", class: "quick-chip", onclick: () => { openDock(false); send(prompt); } }, icon, h("span", {}, label));
 }
 
-function setQuick(actions) {
+function setQuick(actions, opts = {}) {
   const seen = new Set();
   lastQuick = [];
   for (const item of Array.isArray(actions) ? actions : []) {
@@ -300,16 +304,109 @@ function setQuick(actions) {
     if (lastQuick.length >= 5) break;
   }
   renderDockQuick();
+  if (lastQuick.length && opts.open !== false) {
+    openDock(true);
+    const sheet = document.querySelector("#dock-sheet");
+    sheet?.classList.remove("fresh");
+    void sheet?.offsetWidth;
+    sheet?.classList.add("fresh");
+  }
+}
+
+function openDock(open) {
+  const sheet = document.querySelector("#dock-sheet");
+  const toggle = document.querySelector("#dock-toggle");
+  if (!sheet) return;
+  const next = open === undefined ? !sheet.classList.contains("open") : !!open;
+  sheet.classList.toggle("open", next);
+  const body = document.querySelector("#dock-sheet-body");
+  if (body) {
+    body.inert = !next;
+    body.setAttribute("aria-hidden", String(!next));
+  }
+  if (toggle) {
+    toggle.setAttribute("aria-expanded", String(next));
+    toggle.setAttribute("aria-label", t(next ? "dockClose" : "dockOpen"));
+  }
+  renderDockPeek();
+}
+
+function renderDockPeek() {
+  const peek = document.querySelector("#dock-peek");
+  const sheet = document.querySelector("#dock-sheet");
+  if (!peek) return;
+  peek.textContent = sheet?.classList.contains("open") ? t("dockClose") : lastQuick.length ? t("dockPeek", lastQuick.length) : t("dockIdle");
+}
+
+function setupDock() {
+  const handle = document.querySelector("#dock-toggle");
+  if (!handle || handle._wired) return;
+  handle._wired = true;
+  let startY = 0;
+  let dragged = false;
+  handle.addEventListener("pointerdown", (event) => {
+    if (event.button) return;
+    startY = event.clientY;
+    dragged = false;
+    const move = (next) => {
+      if (Math.abs(next.clientY - startY) > 8) dragged = true;
+    };
+    const up = (next) => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      const dy = next.clientY - startY;
+      if (dragged) openDock(dy < 0);
+      else openDock();
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  });
+}
+
+function dockTool(icon, label, onClick, badge) {
+  return h(
+    "button",
+    { type: "button", class: "dock-tool", onclick: onClick },
+    h("span", { class: "dock-tool-icon" }, icon, badge ? h("span", { class: "dock-tool-badge" }, String(badge)) : null),
+    h("span", {}, label)
+  );
+}
+
+function renderDockTools() {
+  const box = document.querySelector("#dock-tools");
+  if (!box) return;
+  const count = HackuCart.count();
+  box.replaceChildren(
+    dockTool(cartIcon(), t("cart"), () => {
+      openDock(false);
+      pageAction("open_cart");
+    }, count),
+    dockTool(lineIcon("M5 12h14M13 6l6 6-6 6"), t("checkout"), () => {
+      saveChat();
+      location.href = "cart.html";
+    }),
+    dockTool(lineIcon("M4 8l8-4 8 4v8l-8 4-8-4V8zM4 8l8 4 8-4M12 12v8"), t("navOrders"), () => {
+      saveChat();
+      location.href = "orders.html";
+    }),
+    dockTool(lineIcon("M12 5v14M5 12h14"), t("newChat"), () => {
+      openDock(false);
+      resetChat();
+    })
+  );
 }
 
 function renderDockQuick() {
   const box = document.querySelector("#dock-quick");
   if (!box) return;
-  if (!lastQuick.length) {
-    box.replaceChildren();
-    return;
+  if (!lastQuick.length) box.replaceChildren();
+  else {
+    box.replaceChildren(
+      h("p", { class: "dock-next-title" }, t("dockNext")),
+      h("div", { class: "quick-row" }, lastQuick.map((item) => actionChip(null, item.label, item.prompt)))
+    );
   }
-  box.replaceChildren(h("div", { class: "quick-row" }, lastQuick.map((item) => actionChip(null, item.label, item.prompt))));
+  renderDockPeek();
 }
 
 function setupVoice() {
@@ -552,6 +649,7 @@ function setLanguage(lang) {
   renderMandate(lastMandate);
   document.querySelector("#compare-bar")?.remove();
   if (comparing.size) syncCompare();
+  renderDockTools();
   renderDockQuick();
 }
 
@@ -753,6 +851,7 @@ function updateCartCount() {
     else cardPainters.delete(painter);
   }
   renderSideCart();
+  renderDockTools();
   renderDockQuick();
 }
 
@@ -1011,6 +1110,7 @@ function resetChat() {
   sessionStorage.setItem(CURRENT_KEY, crypto.randomUUID());
   sessionStorage.removeItem(CHAT_KEY);
   setQuick([]);
+  openDock(false);
   clearMentions();
   els.list.replaceChildren(welcomeItem());
   renderChatList();
@@ -1219,7 +1319,7 @@ function restoreChat() {
     state.openAsk = saved.openAsk;
     els.input.placeholder = t("askPlaceholder");
   }
-  setQuick(saved.next);
+  setQuick(saved.next, { open: false });
 }
 
 function readChat() {
@@ -2201,4 +2301,6 @@ restoreChat();
 saveChat();
 renderChatList();
 finishStripeReturn();
+setupDock();
+renderDockTools();
 renderDockQuick();

@@ -86,7 +86,7 @@ Search results are cached in `data/cache.db` for 6 hours and page reads for 2 ho
 
 ## Chat page
 
-- A new chat opens on a welcome screen with four example requests. Quick-action chips stay under the input on every screen: check out the cart, buy again, where the orders are, and the example searches.
+- A new chat opens on a welcome screen with four example requests. Under the input a small drawer opens on the handle: cart, checkout, orders, new chat, and the model's next-step chips after a reply.
 - While a turn runs, one progress panel shows a timer, each step as it finishes (with the stores found and the lowest price), and a hint that changes every 1.5 seconds. Placeholder cards hold the space until the real cards arrive. When the turn ends, the panel folds into one line, such as 「完成 · 4 個步驟 · 12.3 秒」; click it to see the steps again.
 - Under the latest answer: 複製, 重新回答, and four follow-ups when the answer has cards: 「買推薦的那個」, 「推薦的加入購物車」, 「有沒有更便宜的？」, 「比較前兩個」.
 - Cards get tags worked out on the page: 「最便宜」 (lowest price in one currency), 「評價最多」, and 「評分最高」 (at least 20 reviews, when it is a different card). On a wide screen the five cards sit on one row. After the reply is written, the feed scrolls to the latest line.
