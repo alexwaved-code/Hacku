@@ -670,19 +670,21 @@ async function runTurn(display, entries) {
   } catch (error) {
     if (state.epoch !== epoch) return;
     state.afterTurn = null;
-    if (controller.signal.aborted && controller.signal.reason !== "stop" && !turn.timedOut) return;
+    const stopped = controller.signal.reason === "stop" || turn.timedOut;
+    if (!stopped) {
+      if (document.visibilityState !== "hidden") {
+        turn.remove();
+        resumeTurn(currentChatId());
+      }
+      return;
+    }
     state.pending = false;
     if (turn.timedOut) {
       state.thread.length = base;
       turn.fail(t("timeout"), retry);
-    } else if (controller.signal.aborted && controller.signal.reason === "stop") {
+    } else {
       const partial = turn.stop();
       if (partial) state.thread.push({ role: "assistant", content: partial });
-    } else if (controller.signal.aborted) {
-      return;
-    } else {
-      state.thread.length = base;
-      turn.fail(error instanceof Error ? error.message : t("genericError"), retry);
     }
     saveChat();
   } finally {
