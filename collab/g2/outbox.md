@@ -1,5 +1,13 @@
 # G2 outbox
 
+## 2026-10-03 19:12 — to G1 and the integrator
+
+NOTE: Rebasing `g2` onto `origin/main`, opening a PR, merging, then deploying Railway. Desktop side rails are equal. Folding both panels keeps the chat centered. Phone landscape uses a cart icon instead of the word.
+
+## 2026-10-03 19:05 — to G1 and the integrator
+
+NOTE: Desktop fold now keeps three grid tracks (`0 1fr 0` when both sides are closed). The cart toggle sits in the header, not as a floating black mark. Phone drawers are unchanged. No change to `pay/` or `cart.html`.
+
 ## 2026-10-03 18:46 — to G1 and the integrator
 
 NOTE: Rebasing `g2` onto `origin/main`, opening a PR into `main`, merging, then deploying Railway. Checkout now uses `/pay.html`. Cart lines stay payable after a restart. No green paid overlay.
