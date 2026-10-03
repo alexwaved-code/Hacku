@@ -1,8 +1,8 @@
 .settings-dialog {
-  width: min(520px, calc(100vw - 32px));
-  max-height: calc(100dvh - 32px);
+  width: min(860px, calc(100vw - 32px));
+  max-height: calc(100dvh - 48px);
   margin: auto;
-  padding: 18px 18px 20px;
+  padding: 0;
   border: 1px solid var(--line);
   border-radius: 18px;
   background: var(--panel);
@@ -15,12 +15,68 @@
   background: rgba(28, 25, 21, 0.45);
 }
 
+.settings-shell {
+  display: grid;
+  grid-template-columns: 52px minmax(0, 1fr);
+  min-height: 360px;
+}
+
+.settings-nav {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 16px 0;
+  background: var(--paper);
+  border-right: 1px solid var(--line);
+}
+
+.settings-nav button {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.settings-nav button svg {
+  width: 22px;
+  height: 22px;
+}
+
+.settings-nav button[aria-pressed="true"] {
+  color: var(--ink);
+  background: transparent;
+  box-shadow: none;
+}
+
+.settings-nav button svg.bounce {
+  animation: settings-bounce 0.45s var(--ease);
+}
+
+@keyframes settings-bounce {
+  0% { transform: translateY(0) scale(1); }
+  35% { transform: translateY(-5px) scale(1.28); }
+  65% { transform: translateY(0) scale(0.9); }
+  100% { transform: translateY(0) scale(1); }
+}
+
+.settings-main {
+  min-width: 0;
+  padding: 16px 18px 18px;
+}
+
 .settings-bar {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: 12px;
-  margin-bottom: 16px;
+  margin-bottom: 14px;
 }
 
 .settings-bar h2 {
@@ -54,6 +110,36 @@
 
 .settings-dialog .settings {
   max-width: none;
+  gap: 14px;
+}
+
+.settings-dialog .info-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px 14px;
+}
+
+.settings-dialog .methods {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.settings-dialog [data-pane-panel="pay"] {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.settings-dialog .settings-x {
+  margin: 0;
+}
+
+.settings-dialog .pay {
+  padding: 10px 18px;
+  border: 0;
+  border-radius: 14px;
+  background: var(--ink);
+  color: #fff;
+  font-weight: 650;
 }
 
 .chat-header > div:first-child {
@@ -132,16 +218,17 @@
 }
 
 .method {
-  display: flex;
+  display: grid;
+  grid-template-columns: 16px 72px minmax(0, 1fr);
   align-items: center;
-  gap: 8px;
+  column-gap: 8px;
+  height: 56px;
   margin: 0;
-  padding: 10px 12px;
+  padding: 0 10px;
   border: 1px solid var(--line);
   border-radius: 12px;
   background: #fff;
   cursor: pointer;
-  white-space: nowrap;
 }
 
 .method:has(input:checked) {
@@ -154,11 +241,21 @@
 }
 
 .method img {
-  width: 48px;
-  height: 30px;
+  width: 72px;
+  height: 40px;
   object-fit: contain;
-  flex: none;
+  object-position: center;
+  background: #fff;
   border-radius: 4px;
+}
+
+.method-name {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 14px;
+  line-height: 1.2;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 .settings-actions {
