@@ -356,3 +356,11 @@ The shop runs on Railway at a public HTTPS URL. `HACKU_HOST`, `HACKU_PORT`, and 
 
 `https://hacku-production.up.railway.app/health` returns `{"ok": true}`. The hosted page answered 「你在嗎？」 with 「在，有什麼可以幫你？」.
 
+## 2026-10-03 17:35
+
+Ask cards show options in a row. Each question can be skipped or answered in the shopper's own words. The card sends after every question has a choice, a skip, or a written answer.
+
+**Checked**
+
+`node --check static/app.js`. A three-question card accepted a chip, a skip, and a written answer, then enabled 「送出答案」.
+

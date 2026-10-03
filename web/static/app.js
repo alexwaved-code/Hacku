@@ -1406,7 +1406,7 @@ function createTurn() {
       clearSkeleton();
       markPick(item, item._markdown);
       activity.finish(t("done"));
-      item.querySelector(".ask button")?.focus({ preventScroll: true });
+      item.querySelector(".ask-opt")?.focus({ preventScroll: true });
       scrollToEnd(true);
     },
     addActions(onRetry) {
@@ -1920,80 +1920,141 @@ async function finishStripeReturn() {
 }
 
 function askCard(questions) {
+  questions = Array.isArray(questions) ? questions : [];
   const picked = questions.map(() => new Set());
-  const note = h("input", { class: "ask-note", type: "text", placeholder: t("otherThoughts"), "aria-label": t("otherThoughtsLabel") });
-  const submit = h("button", { type: "button", class: "ask-send", disabled: true }, t("send"));
-  const skip = h("button", { type: "button", class: "pill" }, t("skip"));
-  const quick = questions.length === 1 && !questions[0].multiple;
+  const skipped = questions.map(() => false);
+  const others = [];
+  const skips = [];
+  const groups = [];
+  const submit = h("button", { type: "button", class: "ask-send", disabled: true }, t("askSend"));
+  const status = h("p", { class: "ask-status" }, questions.length > 1 ? t("askQuestions", questions.length) : "");
 
-  const ready = () => picked.every((set) => set.size > 0) || note.value.trim().length > 0;
+  const otherOf = (index) => (others[index]?.value || "").trim();
+  const ready = () => questions.every((_, index) => skipped[index] || picked[index].size > 0 || otherOf(index));
   const refresh = () => {
     submit.disabled = !ready();
   };
+  const clearSkip = (index) => {
+    skipped[index] = false;
+    skips[index]?.setAttribute("aria-pressed", "false");
+    groups[index]?.classList.remove("skipped");
+  };
 
-  const groups = questions.map((question, index) => {
-    const buttons = question.options.map((label) =>
-      h("button", { type: "button", class: "opt", "aria-pressed": "false" }, label)
+  questions.forEach((question, index) => {
+    const multiple = Boolean(question.multiple);
+    const other = h("input", {
+      class: "ask-other",
+      type: "text",
+      placeholder: t("otherThoughts"),
+      "aria-label": `${question.prompt} · ${t("otherThoughtsLabel")}`,
+    });
+    const skip = h("button", { type: "button", class: "ask-skip", "aria-pressed": "false" }, t("skip"));
+    const buttons = (question.options || []).map((label) =>
+      h("button", { type: "button", class: "ask-opt", "aria-pressed": "false", "data-label": label }, label)
     );
     buttons.forEach((button) =>
       button.addEventListener("click", () => {
         const set = picked[index];
-        const label = button.textContent;
-        if (question.multiple) {
+        const label = button.dataset.label;
+        clearSkip(index);
+        if (multiple) {
           set.has(label) ? set.delete(label) : set.add(label);
         } else {
           set.clear();
           set.add(label);
         }
-        buttons.forEach((b) => b.setAttribute("aria-pressed", String(set.has(b.textContent))));
+        buttons.forEach((item) => item.setAttribute("aria-pressed", String(set.has(item.dataset.label))));
         refresh();
-        if (quick) submitAnswers();
       })
     );
-    return h(
+    other.addEventListener("input", () => {
+      if (otherOf(index)) clearSkip(index);
+      refresh();
+    });
+    other.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" && !event.isComposing) {
+        event.preventDefault();
+        submitAnswers();
+      }
+    });
+    skip.addEventListener("click", () => {
+      skipped[index] = !skipped[index];
+      if (skipped[index]) {
+        picked[index].clear();
+        other.value = "";
+        buttons.forEach((button) => button.setAttribute("aria-pressed", "false"));
+      }
+      skip.setAttribute("aria-pressed", String(skipped[index]));
+      groups[index].classList.toggle("skipped", skipped[index]);
+      refresh();
+    });
+    others[index] = other;
+    skips[index] = skip;
+    const titleId = `ask-q-${index}-${Math.random().toString(36).slice(2, 8)}`;
+    groups[index] = h(
       "fieldset",
-      { class: "q" },
-      h("legend", {}, question.prompt, question.multiple ? h("span", { class: "hint" }, t("pickAny")) : null),
-      h("div", { class: "opts" }, buttons)
+      { class: `ask-q${multiple ? " multi" : ""}` },
+      h(
+        "div",
+        { class: "ask-prompt", id: titleId },
+        questions.length > 1 ? h("span", { class: "ask-num" }, String(index + 1)) : null,
+        h("span", { class: "ask-title" }, question.prompt),
+        multiple ? h("span", { class: "ask-mode" }, t("pickAny")) : null
+      ),
+      h("div", { class: "ask-opts", role: "group", "aria-labelledby": titleId }, buttons),
+      h("div", { class: "ask-more" }, other, skip)
     );
   });
+
+  const collect = () =>
+    questions.map((question, index) => {
+      const other = otherOf(index);
+      if (skipped[index]) return { question: question.prompt, skipped: true };
+      const chosen = [...picked[index]];
+      if (other) return chosen.length ? { question: question.prompt, chosen, other } : { question: question.prompt, other };
+      return { question: question.prompt, chosen };
+    });
 
   const submitAnswers = () => {
     if (!ready()) return;
-    const answers = questions
-      .map((question, index) => ({ question: question.prompt, chosen: [...picked[index]] }))
-      .filter((answer) => answer.chosen.length);
-    const extra = note.value.trim();
-    const payload = extra ? { answers, note: extra } : { answers };
-    const display = [...answers.map((answer) => answer.chosen.join(t("sep"))), extra].filter(Boolean).join(" · ");
-    answerAsk(payload, display);
+    const answers = collect();
+    if (answers.every((answer) => answer.skipped)) {
+      answerAsk({ skipped: true }, t("skip"));
+      return;
+    }
+    const display = answers
+      .map((answer) => (answer.skipped ? t("skipped") : [...(answer.chosen || []), answer.other].filter(Boolean).join(t("sep"))))
+      .filter(Boolean)
+      .join(" · ");
+    answerAsk({ answers }, display);
   };
 
-  note.addEventListener("input", refresh);
-  note.addEventListener("keydown", (event) => {
-    if (event.key === "Enter" && !event.isComposing) {
-      event.preventDefault();
-      submitAnswers();
-    }
-  });
   submit.addEventListener("click", submitAnswers);
-  skip.addEventListener("click", () => answerAsk({ skipped: true }, t("skip")));
 
-  if (quick) groups[0].querySelector(".opts").append(skip);
   const el = h(
     "div",
-    { class: "ask" },
-    groups,
-    quick ? null : h("div", { class: "ask-foot" }, note, h("div", { class: "ask-actions" }, submit, skip))
+    { class: "ask", role: "form", "aria-label": t("needChoice") },
+    h("header", { class: "ask-head" }, h("p", { class: "ask-kicker" }, t("needChoice")), status),
+    h("div", { class: "ask-body" }, groups),
+    h("footer", { class: "ask-foot" }, submit)
   );
 
   const close = (payload) => {
     el.classList.add("closed");
+    if (payload.skipped) el.classList.add("skipped");
+    else if (payload.user_reply) el.classList.add("typed");
+    status.textContent = payload.skipped ? t("skipped") : payload.user_reply ? t("typedInstead") : t("askAnswered");
+    groups.forEach((group, index) => {
+      if (payload.skipped || skipped[index]) {
+        group.classList.add("skipped");
+        group.append(h("p", { class: "ask-result" }, t("skipped")));
+      } else if (otherOf(index)) {
+        group.append(h("p", { class: "ask-result" }, otherOf(index)));
+      }
+    });
     el.querySelectorAll("button, input").forEach((control) => {
       control.disabled = true;
     });
-    if (payload.skipped) el.append(h("p", { class: "note" }, t("skipped")));
-    else if (payload.user_reply) el.append(h("p", { class: "note" }, t("typedInstead")));
   };
 
   return { el, close };
